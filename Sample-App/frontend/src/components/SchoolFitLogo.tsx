@@ -1,0 +1,1 @@
+import React from "react";export const SchoolFitLogo:React.FC<React.SVGProps<SVGSVGElement>>=(p)=>(<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 3L2 9l10 6 10-6-10-6zm0 14L4 11v6l8 4 8-4v-6l-8 6z" fill="currentColor"/></svg>);

@@ -1,0 +1,1 @@
+import React from "react";import {Card}from "./ui/card";export const UserProfile:React.FC<{user:any;setUser:(u:any)=>void}>=({user})=>(<Card className="p-6"><div className="font-semibold mb-2">Your Profile</div><div>Name: {user?.name}</div><div>Email: {user?.email}</div>{user?.address&&<div>Address: {user.address}</div>}</Card>);
