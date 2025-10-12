@@ -4,4 +4,4 @@
 #### - API
 #### - Database (to store account details)
 
-### Please add the packages/libraries/dependencies that is required (frontend+backend)
+### Please add the packages/libraries/dependencies that is required to run the app to requirements.txt (frontend+backend)
