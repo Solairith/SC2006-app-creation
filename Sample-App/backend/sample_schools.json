@@ -1,0 +1,42 @@
+[
+  {
+    "school_name": "Riverside Elementary School",
+    "postal_code": "10001",
+    "mainlevel_code": "PRIMARY",
+    "zone_code": "CENTRAL",
+    "type_code": "GOVERNMENT",
+    "address": "123 School Street, New York, NY"
+  },
+  {
+    "school_name": "Washington High School",
+    "postal_code": "10002",
+    "mainlevel_code": "SECONDARY",
+    "zone_code": "EAST",
+    "type_code": "GOV_AIDED",
+    "address": "45 East Ave, New York, NY"
+  },
+  {
+    "school_name": "St. Mary's Catholic School",
+    "postal_code": "10003",
+    "mainlevel_code": "PRIMARY",
+    "zone_code": "WEST",
+    "type_code": "INDEPENDENT",
+    "address": "9 West Blvd, New York, NY"
+  },
+  {
+    "school_name": "Innovation Charter Academy",
+    "postal_code": "10004",
+    "mainlevel_code": "SECONDARY",
+    "zone_code": "NORTH",
+    "type_code": "SPECIALISED",
+    "address": "77 North Rd, New York, NY"
+  },
+  {
+    "school_name": "Montessori Learning Center",
+    "postal_code": "10005",
+    "mainlevel_code": "PRIMARY",
+    "zone_code": "SOUTH",
+    "type_code": "INDEPENDENT",
+    "address": "3 South Park, New York, NY"
+  }
+]
