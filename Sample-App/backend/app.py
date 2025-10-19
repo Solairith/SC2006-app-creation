@@ -17,5 +17,8 @@ app.register_blueprint(health_bp, url_prefix="/api")
 app.register_blueprint(school_bp, url_prefix="/api/schools")
 app.register_blueprint(user_bp, url_prefix="/api/auth")
 
+@app.route('/')
+def home():
+    return {"message": "Backend is running!"}
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
