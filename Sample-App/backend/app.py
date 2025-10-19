@@ -1,8 +1,18 @@
+#app.py
 from flask import Flask
 from flask_cors import CORS
 from routes.schools import school_bp
 from routes.users import user_bp
 from routes.health import health_bp
+
+from dotenv import load_dotenv
+import os
+
+from utils.db import get_db
+
+load_dotenv()  # This reads your .env file
+collection_id = os.getenv("COLLECTION_ID")  # This gets the value
+
 
 app = Flask(__name__)
 app.secret_key = "dev-secret-change-me"
@@ -22,3 +32,12 @@ def home():
     return {"message": "Backend is running!"}
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000, debug=True)
+
+
+@app.teardown_appcontext
+#Flask runs this automatically after handling a web request, to close your database connection to free memory.
+def teardown_db(exception):
+    db = getattr(g, "db", None)
+    if db is not None:
+        db.close()
+
