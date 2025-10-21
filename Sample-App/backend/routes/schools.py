@@ -1,30 +1,36 @@
 # routes/schools.py
 from flask import Blueprint, jsonify, request
-from services.data_fetcher import get_schools
+from services.data_fetcher import get_schools, get_school_details
 
-# Blueprint defines a route group for all /api/schools endpoints
+# Blueprint defines route group for all /api/schools endpoints
 school_bp = Blueprint("schools", __name__, url_prefix="/api/schools")
 
+
+# ----------------------------------------------------------------------
+# 1️⃣ Main list endpoint (pagination + filtering)
+# ----------------------------------------------------------------------
 @school_bp.get("/")
 def api_schools():
     """
-    Fetch school information from Data.gov.sg (via data_fetcher).
-    Supports optional filtering by:
-      - q (search term)
-      - level (e.g. PRIMARY, SECONDARY)
-      - zone (e.g. N, S, E, W)
-      - type (e.g. GOVERNMENT, INDEPENDENT)
+    Fetch school list with pagination and filters.
+    Query params:
+      - q: search text
+      - level: filter by mainlevel_code
+      - zone: filter by zone_code
+      - type: filter by type_code
+      - limit, offset: pagination controls
     """
-    # --- Read query parameters from frontend ---
     q = (request.args.get("q") or "").strip().lower()
     level = (request.args.get("level") or "").strip()
-    zone  = (request.args.get("zone") or "").strip()
+    zone = (request.args.get("zone") or "").strip()
     stype = (request.args.get("type") or "").strip()
+    limit = int(request.args.get("limit", 10))
+    offset = int(request.args.get("offset", 0))
 
-    # --- Fetch all school data (cached inside data_fetcher) ---
-    items = get_schools()   # or get_schools(fetch_all=True) to combine multiple datasets
+    # ✅ Fetch cached base dataset
+    items = get_schools(fetch_all=False)
 
-    # --- Apply filtering ---
+    # 🔍 Apply filters
     def match(s):
         text = " ".join([
             s.get("school_name", ""),
@@ -45,11 +51,38 @@ def api_schools():
         return True
 
     filtered = [s for s in items if match(s)]
+    total = len(filtered)
+    paginated = filtered[offset: offset + limit]
+    total_pages = (total + limit - 1) // limit
 
-    # --- Return standardized JSON response ---
     return jsonify({
-        "items": filtered,
-        "total": len(filtered),
-        "limit": 50,
-        "offset": 0
+        "items": paginated,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "total_pages": total_pages
     })
+
+
+# ----------------------------------------------------------------------
+# 2️⃣ Detailed endpoint for a single school
+# ----------------------------------------------------------------------
+@school_bp.get("/<path:school_name>")
+def api_school_detail(school_name):
+    """
+    Fetch full details for a single school:
+    - Includes website, email, telephone
+    - Adds subjects and CCAs
+    Example:
+        GET /api/schools/ang%20mo%20kio%20secondary%20school
+    """
+    try:
+        # 🔧 Decode and normalize
+        school_name = school_name.replace("+", " ").strip()
+        details = get_school_details(school_name)
+        if not details:
+            return jsonify({"error": f"School '{school_name}' not found"}), 404
+        return jsonify(details)
+    except Exception as e:
+        print(f"❌ Error fetching school details for '{school_name}':", e)
+        return jsonify({"error": "Failed to load school details"}), 500
