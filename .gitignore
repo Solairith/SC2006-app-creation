@@ -1,12 +1,20 @@
-# Virtual environment
+# Python virtual environment
 venv/
 
-# Python cache
+# Byte-compiled / cache
 __pycache__/
 *.pyc
 
-# Environment files
+# Environment variables
 .env
 
-# VS Code settings
+# Node modules
+node_modules/
+
+# Build files
+dist/
+build/
+
+# OS / IDE stuff
+.DS_Store
 .vscode/

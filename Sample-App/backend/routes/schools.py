@@ -50,6 +50,11 @@ def api_schools():
             s.get("mainlevel_code", "") or "",
             s.get("zone_code", "") or "",
             s.get("type_code", "") or ""
+            s.get("school_name", ""),
+            s.get("address", ""),
+            s.get("mainlevel_code", ""),
+            s.get("zone_code", ""),
+            s.get("type_code", "")
         ]).lower()
 
         if q and q not in text:
