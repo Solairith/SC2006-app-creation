@@ -71,7 +71,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
-            password_hash TEXT,
+            password_hash TEXT NULL,
             google_id TEXT UNIQUE,
             address TEXT,
             grades TEXT,
