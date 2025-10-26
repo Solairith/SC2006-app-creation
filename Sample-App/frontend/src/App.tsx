@@ -4,6 +4,8 @@ import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card"; // ADD THIS
 import { User } from "lucide-react"; // ADD THIS
 import { getMe, logout } from "./lib/api";
+// In App.tsx - update checkUserPreferences to use getPreferences API
+import { getPreferences } from "./lib/api"; // ADD THIS IMPORT
 
 import { Header } from "./components/layout/Header";
 import { ExploreTab } from "./components/tabs/ExploreTab";
@@ -11,14 +13,19 @@ import { SavedTab } from "./components/tabs/SavedTab";
 import { ProfileTab } from "./components/tabs/ProfileTab";
 import { SchoolDetails } from "./components/SchoolDetails";
 import { AuthModal } from "./components/AuthModal";
+import { SchoolRecommendations } from "./components/SchoolRecommendations";
+
+import { UserProfile } from "./components/UserProfile";
 
 export default function App() {
   const [currentView, setCurrentView] = useState<"explore" | "saved" | "recommendations" | "profile" | "schoolDetails">("explore");
   const [user, setUser] = useState<any>(null);
   const [selectedSchool, setSelectedSchool] = useState<string | null>(null);
   const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login"); // ADD THIS
-
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [userHasPreferences, setUserHasPreferences] = useState(false);
+  const [isNewUser, setIsNewUser] = useState(false); 
+  const [showPreferencesForm, setShowPreferencesForm] = useState(false);
   // ADD nav function
   const nav = (view: typeof currentView) => {
     setCurrentView(view);
@@ -51,9 +58,72 @@ export default function App() {
     } catch {
       setUser(null);
     }
-  };
+  }; 
+  
 
-  useEffect(() => { refresh(); }, []);
+ 
+const onAuth = async (user: any) => {
+  setUser(user);
+  setShowAuth(false);
+  
+  // Immediately redirect new users to profile to set preferences
+  const hasPrefs = await checkUserPreferences();
+  
+  if (!hasPrefs) {
+    setIsNewUser(true);
+    setShowPreferencesForm(true);
+    setCurrentView("profile");
+  }
+};
+
+useEffect(() => {
+  if (user) {
+    checkUserPreferences();
+  }
+}, [user]);
+
+    const checkUserPreferences = async (): Promise<boolean> => {
+      try {
+        console.log('Checking user preferences...');
+        // Use the same API function as everywhere else
+        const data = await getPreferences();
+        
+        console.log('Preferences data:', data);
+        
+        const hasPrefs = !!(data?.level || 
+                          (data?.subjects && data.subjects.length > 0) || 
+                          (data?.ccas && data.ccas.length > 0) || 
+                          data?.max_distance_km);
+        
+        console.log('Has preferences:', hasPrefs);
+        setUserHasPreferences(hasPrefs);
+        return hasPrefs;
+      } catch (error) {
+        console.error('Error checking user preferences:', error);
+        return false;
+      }
+    };
+    
+   useEffect(() => { refresh(); }, []);
+
+ useEffect(() => {
+    const handlePreferencesSaved = () => {
+      setUserHasPreferences(true);
+      setIsNewUser(false); // No longer a new user
+      setShowPreferencesForm(false); // Hide preferences form after saving
+    };
+
+    window.addEventListener('preferences-saved', handlePreferencesSaved);
+    
+    return () => {
+      window.removeEventListener('preferences-saved', handlePreferencesSaved);
+    };
+  }, []);
+
+  // Add function to toggle preferences form
+  const togglePreferencesForm = () => {
+    setShowPreferencesForm(!showPreferencesForm);
+  };
 
   const onRequireAuth = () => setShowAuth(true);
 
@@ -149,12 +219,36 @@ export default function App() {
             <SavedTab user={user} onViewDetails={handleViewSchoolDetails} />
           )}
 
+      
           {currentView === "recommendations" && user && (
-            <div>Recommendations coming soon...</div> // Placeholder for now
+            userHasPreferences ? (
+              <SchoolRecommendations onViewDetails={handleViewSchoolDetails} />
+            ) : (
+              <div className="max-w-2xl mx-auto">
+                <Card className="p-6 text-center">
+                  <h2 className="text-2xl font-bold mb-4">Set Your Preferences First</h2>
+                  <p className="text-muted-foreground mb-6">
+                    Please set your school preferences to get personalized recommendations.
+                  </p>
+                  <Button 
+                    onClick={() => setCurrentView("profile")}
+                    className="bg-primary text-primary-foreground"
+                  >
+                    Set Preferences
+                  </Button>
+                </Card>
+              </div>
+            )
           )}
 
           {currentView === "profile" && user && (
-            <ProfileTab user={user} setUser={setUser} />
+            <ProfileTab 
+              user={user} 
+              setUser={setUser}
+              isNewUser={isNewUser}
+              showPreferencesForm={showPreferencesForm}
+              onTogglePreferences={togglePreferencesForm}
+            />
           )}
 
           {}
@@ -189,15 +283,9 @@ export default function App() {
 
       {}
       {showAuth && (
-        <AuthModal 
-          isOpen={showAuth}
-          onClose={() => setShowAuth(false)}
-          mode={authMode}
-          onAuth={(u) => { 
-            setUser(u); 
-            setCurrentView("profile"); 
-            setShowAuth(false); 
-          }} 
+        <AuthModal
+        onClose={() => setShowAuth(false)}
+        onAuthed = {onAuth}
         />
       )}
 

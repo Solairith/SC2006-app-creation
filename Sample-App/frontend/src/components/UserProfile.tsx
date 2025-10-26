@@ -37,21 +37,31 @@ export const UserProfile: React.FC = () => {
     })();
   }, []);
 
-  const onSave = async () => {
-    setSaved(false);
-    setError(null);
-    try {
-      await savePreferences({
-        level: level || undefined,
-        subjects: subjects,
-        ccas: ccas,
-        max_distance_km: maxDistance ? Number(maxDistance) : undefined,
-      });
-      setSaved(true);
-    } catch (e:any) {
-      setError(e.message || "Failed to save");
-    }
-  };
+const onSave = async () => {
+  setSaved(false);
+  setError(null);
+  try {
+    const preferencesData = {
+      level: level || undefined,
+      subjects: subjects,
+      ccas: ccas,
+      max_distance_km: maxDistance ? Number(maxDistance) : undefined,
+    };
+    
+    console.log('Saving preferences:', preferencesData);
+    
+    await savePreferences(preferencesData);
+    setSaved(true);
+    
+    console.log('Preferences saved successfully');
+    
+    // Notify parent that preferences were saved
+    window.dispatchEvent(new CustomEvent('preferences-saved'));
+  } catch (e: any) {
+    console.error('Failed to save preferences:', e);
+    setError(e.message || "Failed to save");
+  }
+};
 
   return (
     <Card className="p-4">
@@ -63,6 +73,8 @@ export const UserProfile: React.FC = () => {
             <option value="">Select level</option>
             <option value="PRIMARY">Primary</option>
             <option value="SECONDARY">Secondary</option>
+            <option value="Junior College">Junior College</option>
+            <option value="MIXED LEVELS">Mixed Levels</option>
           </select>
         </div>
         <div>
