@@ -1,1 +1,0 @@
-import React from "react";import {Card}from "./ui/card";export const SavedSchools:React.FC<{user:any;onViewDetails:(id:number)=>void}>=()=> (<Card className="p-6 text-center"><div className="text-lg font-semibold mb-2">Saved Schools</div><div className="text-muted">Coming soon</div></Card>);
