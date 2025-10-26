@@ -11,6 +11,15 @@ import { UserProfile } from "./components/UserProfile";
 import { SchoolDetails } from "./components/SchoolDetails";
 import { getMe, logout } from "./lib/api";
 
+// Make sure your App.tsx imports look like this:
+import { Header } from "./components/layout/Header";
+import { ExploreTab } from "./components/tabs/ExploreTab";
+import { SavedTab } from "./components/tabs/SavedTab";
+import { ProfileTab } from "./components/tabs/ProfileTab";
+// You'll also need these:
+type TabType = 'explore' | 'saved' | 'foryou' | 'profile';
+
+
 export default function App() {
   const [currentView, setCurrentView] = useState<
     "explore" | "saved" | "recommendations" | "profile" | "schoolDetails"
@@ -80,6 +89,26 @@ export default function App() {
             </div>
             <h1 className="text-lg font-bold text-primary">SchoolFit</h1>
           </div>
+          <div className="hidden md:flex items-center space-x-6">
+            {[
+              { id: "explore", label: "Explore" },
+              { id: "saved", label: "Saved"  },
+              { id: "recommendations", label: "For You" },
+              { id: "profile", label: "Profile" },
+            ].map((tab) => ( 
+              <button
+                key={tab.id}
+                onClick={() => nav(tab.id as any)} 
+                className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition ${
+                  currentView === tab.id
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
 
           <div className="flex items-center space-x-2">
             {user ? (
@@ -105,6 +134,28 @@ export default function App() {
             )}
           </div>
         </div>
+        <div className="md:hidden border-t border-border">
+        <div className="flex justify-around">
+          {[
+            { id: "explore", label: "Explore" },
+            { id: "saved", label: "Saved" },
+            { id: "recommendations", label: "For You" },
+            { id: "profile", label: "Profile" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => nav(tab.id as any)} // Remove "as any" - fix the type properly
+              className={`flex flex-col items-center py-3 flex-1 transition ${
+                currentView === tab.id
+                  ? "text-primary border-t-2 border-primary"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <span className="text-xs mt-1">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+</div>
       </header>
 
       {/* Main Content */}
@@ -139,7 +190,18 @@ export default function App() {
 
           {!user && currentView !== "explore" && (
             <Card className="rounded-xl border-0 bg-gray-100 p-8 text-center">
-              Please sign in to use this section.
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Sign In Required</h3>
+                <p className="text-muted-foreground"> 
+                  Please Sign in to access {currentView === "saved"? "your saved schools":
+                  currentView === "recommendations" ? "personalized recommendations" : "your profile"} </p>
+                <Button
+                  onClick={() => {
+                    setAuthMode("login");
+                    setIsAuthModalOpen(true);
+                  }}
+                  >Sign In</Button>
+                </div>
             </Card>
           )}
         </div>
