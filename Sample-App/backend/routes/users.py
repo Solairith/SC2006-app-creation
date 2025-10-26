@@ -35,9 +35,12 @@ def login():
     password = data.get("password") or ""
     if not (email and password):
         return {"error":"EMAIL_PASSWORD_REQUIRED"}, 400
+
+    from models.user_model import verify_password
     u = verify_password(email, password)
     if not u:
         return {"error":"INVALID_CREDENTIALS"}, 401
+
     session["uid"] = u.id
     return {"ok": True, "user": {"id": u.id, "name": u.name, "email": u.email}}
 
