@@ -1,1 +1,0 @@
-import React from "react";export const Badge:React.FC<React.HTMLAttributes<HTMLSpanElement>>=({className="",...rest})=><span className={`inline-block rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs text-indigo-700 ${className}`} {...rest}/>;
