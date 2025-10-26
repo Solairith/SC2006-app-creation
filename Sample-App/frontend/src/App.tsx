@@ -1,157 +1,84 @@
-import React, { useState, useEffect } from "react";
-import { Menu, User } from "lucide-react";
+import React, { useEffect, useState } from "react";
 import { SchoolFitLogo } from "./components/SchoolFitLogo";
 import { Button } from "./components/ui/button";
-import { Card } from "./components/ui/card";
-import { AuthModal } from "./components/AuthModal";
 import { SchoolSearch } from "./components/SchoolSearch";
-import { SavedSchools } from "./components/SavedSchools";
 import { SchoolRecommendations } from "./components/SchoolRecommendations";
 import { UserProfile } from "./components/UserProfile";
 import { SchoolDetails } from "./components/SchoolDetails";
 import { getMe, logout } from "./lib/api";
+import { AuthModal } from "./components/AuthModal";
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<
-    "explore" | "saved" | "recommendations" | "profile" | "schoolDetails"
-  >("explore");
-
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [currentView, setCurrentView] = useState<"explore"|"recommendations"|"profile"|"schoolDetails">("explore");
   const [user, setUser] = useState<any>(null);
+  const [selectedSchool, setSelectedSchool] = useState<string | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
 
-  // ✅ CHANGED: now store schoolName (string), not ID
-  const [selectedSchoolName, setSelectedSchoolName] = useState<string | null>(null);
-
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const me = await getMe();
-        setUser(me.user || null);
-      } catch (e) {}
-    })();
-  }, []);
-
-  const handleAuth = async (u: any) => {
-    setUser(u || null);
+  const refresh = async () => {
     try {
-      const me = await getMe();
-      if (me.user) setUser(me.user);
-    } catch (e) {}
-    setIsAuthModalOpen(false);
+      const r = await getMe();
+      setUser(r.user || null);
+    } catch {
+      setUser(null);
+    }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    setUser(null);
-    setCurrentView("explore");
-    setSelectedSchoolName(null);
-  };
+  useEffect(() => { refresh(); }, []);
 
-  // ✅ CHANGED: takes a school name (string)
-  const handleViewSchoolDetails = (schoolName: string) => {
-    setSelectedSchoolName(schoolName);
+  const onRequireAuth = () => setShowAuth(true);
+
+  const onViewDetails = (name: string) => {
+    setSelectedSchool(name);
     setCurrentView("schoolDetails");
   };
 
-  const handleBackFromDetails = () => {
-    setSelectedSchoolName(null);
-    setCurrentView("explore");
-  };
-
-  const nav = (v: typeof currentView) => {
-    setCurrentView(v);
-    setIsMobileMenuOpen(false);
-  };
-
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border bg-card/95">
-        <div className="flex items-center justify-between p-4">
-          <div
-            className="flex items-center space-x-3 cursor-pointer"
-            onClick={() => nav("explore")}
-          >
-            <div className="bg-primary rounded-lg p-2">
-              <SchoolFitLogo className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <h1 className="text-lg font-bold text-primary">SchoolFit</h1>
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b">
+        <div className="p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <SchoolFitLogo />
+            <div className="font-semibold text-lg">SchoolFit</div>
           </div>
-
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
+            <Button variant={currentView==="explore"?"default":"outline"} onClick={() => setCurrentView("explore")}>Explore</Button>
+            <Button variant={currentView==="recommendations"?"default":"outline"} onClick={() => { if (!user) { onRequireAuth(); return; } setCurrentView("recommendations"); }}>For you</Button>
+            <Button variant={currentView==="profile"?"default":"outline"} onClick={() => { if (!user) { onRequireAuth(); return; } setCurrentView("profile"); }}>Profile</Button>
             {user ? (
-              <div className="flex items-center space-x-2">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-4 w-4 text-primary" />
-                </div>
-                <Button variant="outline" size="sm" onClick={handleLogout}>
-                  Logout
-                </Button>
-              </div>
+              <>
+                <div className="text-sm">Hi, {user.name}</div>
+                <Button variant="outline" onClick={async ()=>{await logout(); setUser(null);}}>Logout</Button>
+              </>
             ) : (
-              <Button
-                size="sm"
-                className="rounded-full px-4"
-                onClick={() => {
-                  setAuthMode("login");
-                  setIsAuthModalOpen(true);
-                }}
-              >
-                Sign In
-              </Button>
+              <Button onClick={onRequireAuth}>Sign in</Button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 pb-20 md:pb-8">
-        <div className="p-4 space-y-4">
-          {currentView === "explore" && (
-            <SchoolSearch user={user} onViewDetails={handleViewSchoolDetails} />
-          )}
-
-          {currentView === "saved" && user && (
-            <SavedSchools user={user} onViewDetails={handleViewSchoolDetails} />
-          )}
-
-          {currentView === "recommendations" && user && (
-            <SchoolRecommendations
-              user={user}
-              onViewDetails={handleViewSchoolDetails}
-            />
-          )}
-
-          {currentView === "profile" && user && (
-            <UserProfile user={user} setUser={setUser} />
-          )}
-
-          {/* ✅ CHANGED: now uses selectedSchoolName */}
-          {currentView === "schoolDetails" && selectedSchoolName && (
-            <SchoolDetails
-              schoolName={selectedSchoolName}
-              onBack={handleBackFromDetails}
-            />
-          )}
-
-          {!user && currentView !== "explore" && (
-            <Card className="rounded-xl border-0 bg-gray-100 p-8 text-center">
-              Please sign in to use this section.
-            </Card>
-          )}
-        </div>
+      <main className="flex-1 p-4 space-y-4">
+        {currentView==="explore" && (
+          <SchoolSearch
+            user={user}
+            onViewDetails={onViewDetails}
+            onGoRecommendations={()=> setCurrentView("recommendations")}
+            onRequireAuth={onRequireAuth}
+          />
+        )}
+        {currentView==="recommendations" && (
+          <SchoolRecommendations onViewDetails={onViewDetails} />
+        )}
+        {currentView==="profile" && (
+          <UserProfile />
+        )}
+        {currentView==="schoolDetails" && selectedSchool && (
+          <SchoolDetails schoolName={selectedSchool} onBack={() => setCurrentView("explore")} />
+        )}
       </main>
 
-      {/* Auth modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        mode={authMode}
-        onAuth={handleAuth}
-      />
+      {showAuth && <AuthModal onClose={()=>setShowAuth(false)} onAuthed={(u)=>{ setUser(u); setCurrentView("profile"); setShowAuth(false); }} />}
+
+      <footer className="text-center text-xs text-muted py-4 border-t">© SchoolFit</footer>
     </div>
   );
 }

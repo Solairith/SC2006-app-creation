@@ -1,353 +1,187 @@
-# routes/schools.py
-from flask import Blueprint, jsonify, request
-from services.data_fetcher import get_schools, get_school_details
-import math
-from typing import List, Dict, Any, Optional
 
-# Blueprint defines route group for all /api/schools endpoints
+# routes/schools.py
+from flask import Blueprint, request, jsonify
+from services.data_fetcher import get_schools, get_school_details
+from models.user_model import current_user, read_preferences
+from math import radians, sin, cos, sqrt, atan2
+
 school_bp = Blueprint("schools", __name__, url_prefix="/api/schools")
 
-def _get_school_name(s: dict) -> str:
-    """
-    Handles inconsistent header capitalization for school names.
-    Works with: school_name, School_name, School_Name, name
-    """
-    for key in ["school_name", "School_name", "School_Name", "name"]:
-        if key in s and s[key]:
-            return str(s[key])
-    return "Unknown School"
+def _normalize_level(lv: str | None) -> str | None:
+    if not lv: 
+        return None
+    lv = lv.strip().lower()
+    if lv in ("primary","pri","p","ps"):
+        return "PRIMARY"
+    if lv in ("secondary","sec","s"):
+        return "SECONDARY"
+    return lv.upper()
 
+def _alpha_name(s: dict) -> str:
+    return (s.get("school_name") or "").strip().lower()
 
-# ----------------------------------------------------------------------
-# 1️⃣ Main list endpoint (pagination + filtering)
-# ----------------------------------------------------------------------
-@school_bp.get("/")
-def api_schools():
-    """
-    Fetch school list with pagination and filters.
-    Query params:
-      - q: search text
-      - level: filter by mainlevel_code
-      - zone: filter by zone_code
-      - type: filter by type_code
-      - limit, offset: pagination controls
-    """
+# Haversine distance (km)
+def _haversine(lat1, lon1, lat2, lon2):
+    # If any missing, return None
+    if None in (lat1, lon1, lat2, lon2):
+        return None
+    R = 6371.0
+    dlat = radians(lat2-lat1)
+    dlon = radians(lon2-lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2*atan2(sqrt(a), sqrt(1-a))
+    return R*c
+
+@school_bp.get("/", strict_slashes=False)
+def search():
     q = (request.args.get("q") or "").strip().lower()
-    level = (request.args.get("level") or "").strip()
-    zone = (request.args.get("zone") or "").strip()
-    stype = (request.args.get("type") or "").strip()
-    limit = int(request.args.get("limit", 10))
-    offset = int(request.args.get("offset", 0))
+    level = _normalize_level(request.args.get("level"))
+    zone = (request.args.get("zone") or "").strip().upper()
+    type_code = (request.args.get("type") or "").strip().upper()
+    limit = int(request.args.get("limit") or 20)
+    offset = int(request.args.get("offset") or 0)
 
-    # ✅ Fetch cached base dataset
-    items = get_schools(fetch_all=False)
-
-    # 🔍 Apply filters
-    def match(s):
-        text = " ".join([
-            _get_school_name(s),
-            s.get("address", "") or "",
-            s.get("mainlevel_code", "") or "",
-            s.get("zone_code", "") or "",
-            s.get("type_code", "") or ""
-            s.get("school_name", ""),
-            s.get("address", ""),
-            s.get("mainlevel_code", ""),
-            s.get("zone_code", ""),
-            s.get("type_code", "")
-        ]).lower()
-
-        if q and q not in text:
+    items = get_schools()
+    def ok(s):
+        if q and q not in (s.get("school_name") or "").lower():
             return False
         if level and s.get("mainlevel_code") != level:
             return False
         if zone and s.get("zone_code") != zone:
             return False
-        if stype and s.get("type_code") != stype:
+        if type_code and s.get("type_code") != type_code:
             return False
         return True
 
-    filtered = [s for s in items if match(s)]
+    filtered = [s for s in items if ok(s)]
     total = len(filtered)
-    paginated = filtered[offset: offset + limit]
-    total_pages = (total + limit - 1) // limit
+    sliced = filtered[offset:offset+limit]
+    return {"items": sliced, "total": total, "limit": limit, "offset": offset, "total_pages": (total+limit-1)//limit}
 
-    return jsonify({
-        "items": paginated,
-        "total": total,
-        "limit": limit,
-        "offset": offset,
-        "total_pages": total_pages
-    })
+@school_bp.get("/details")
+def details():
+    name = request.args.get("name")
+    if not name:
+        return {"error":"name required"}, 400
+    d = get_school_details(name)
+    if not d:
+        return {"error":"not found"}, 404
+    return {"ok": True, "item": d}
 
+def _score_school(school: dict, prefs: dict, weights: dict, user_lat=None, user_lon=None) -> tuple[float, dict]:
+    # Prepare factors
+    cca_prefs = set(map(str.lower, prefs.get("ccas") or []))
+    subj_prefs = set(map(str.lower, prefs.get("subjects") or []))
+    lvl_pref = _normalize_level(prefs.get("level"))
+    max_km = prefs.get("max_distance_km") or prefs.get("travel_km")
 
-# ----------------------------------------------------------------------
-# 2️⃣ Detailed endpoint for a single school
-# ----------------------------------------------------------------------
-@school_bp.get("/<path:school_name>")
-def api_school_detail(school_name):
-    """
-    Fetch full details for a single school:
-    - Includes website, email, telephone
-    - Adds subjects and CCAs
-    Example:
-        GET /api/schools/ang%20mo%20kio%20secondary%20school
-    """
-    try:
-        # 🔧 Decode and normalize
-        school_name = school_name.replace("+", " ").strip()
-        details = get_school_details(school_name)
-        if not details:
-            return jsonify({"error": f"School '{school_name}' not found"}), 404
-        return jsonify(details)
-    except Exception as e:
-        print(f"❌ Error fetching school details for '{school_name}':", e)
-        return jsonify({"error": "Failed to load school details"}), 500
+    details = get_school_details(school["school_name"]) or {}
+    school_ccas = set(map(str.lower, details.get("ccas", [])))
+    school_subjects = set(map(str.lower, details.get("subjects", [])))
+    school_level = (school.get("mainlevel_code") or "").upper()
+    lat = school.get("latitude")
+    lon = school.get("longitude")
 
-# -----------------------------
-# Recommendation — helpers
-# -----------------------------
+    # Factors ∈ [0,1]
+    cca_score = (len(cca_prefs & school_ccas) / max(1, len(cca_prefs))) if cca_prefs else 0.0
+    subj_score = (len(subj_prefs & school_subjects) / max(1, len(subj_prefs))) if subj_prefs else 0.0
+    level_score = 1.0 if (lvl_pref and school_level == lvl_pref) else (0.0 if lvl_pref else 0.0)
 
-def _to_list(x):
-    if not x:
-        return []
-    if isinstance(x, list):
-        return [str(i).strip() for i in x if str(i).strip()]
-    return [s.strip() for s in str(x).split(",") if s.strip()]
-
-def _jaccard(a: List[str], b: List[str]) -> float:
-    A = {s.lower() for s in a if s}
-    B = {s.lower() for s in b if s}
-    if not A or not B:
-        return 0.0
-    return len(A & B) / len(A | B)
-
-def _alias_level(val: Optional[str]) -> str:
-    if not val: return ""
-    v = str(val).strip().lower()
-    # common aliases seen in MOE data
-    aliases = {
-        "sec": "secondary",
-        "secondary school": "secondary",
-        "jc": "junior college",
-        "junior coll": "junior college",
-        "pri": "primary",
-        "primary school": "primary",
-    }
-    return aliases.get(v, v)
-
-def _level_match(user_level: Optional[str], school_level: Optional[str]) -> float:
-    u = _alias_level(user_level)
-    s = _alias_level(school_level)
-    if not u or not s: return 0.0
-    if u == s: return 1.0
-    # near matches
-    pairs = {("secondary", "junior college"), ("junior college", "secondary")}
-    return 0.6 if (u, s) in pairs or (s, u) in pairs else 0.0
-
-def _haversine_km(lat1, lon1, lat2, lon2) -> Optional[float]:
-    try:
-        if None in (lat1, lon1, lat2, lon2):
-            return None
-        R = 6371.0
-        p1, p2 = math.radians(lat1), math.radians(lat2)
-        dphi = math.radians(lat2 - lat1)
-        dlmb = math.radians(lon2 - lon1)
-        a = math.sin(dphi/2)**2 + math.cos(p1)*math.cos(p2)*math.sin(dlmb/2)**2
-        return 2 * R * math.asin(math.sqrt(a))
-    except Exception:
-        return None
-
-def _norm01(x: Optional[float], lo: float, hi: float, reverse=False) -> float:
-    if x is None or hi == lo:
-        return 0.0
-    x = max(min(float(x), hi), lo)
-    v = (x - lo) / (hi - lo)
-    return 1.0 - v if reverse else v
-
-def _distance_score(user_lat, user_lon, sch_lat, sch_lon, max_km: Optional[float]) -> float:
-    if not max_km or max_km <= 0:
-        return 0.0
-    d = _haversine_km(user_lat, user_lon, sch_lat, sch_lon)
-    if d is None:
-        return 0.0
-    d = max(0.0, min(d, float(max_km)))
-    return _norm01(d, 0.0, float(max_km), reverse=True)
-
-def _pick_coord(s: Dict[str, Any], key_lat="latitude", key_lon="longitude"):
-    # Try common keys from Data.gov.sg; adjust if your data_fetcher uses different keys.
-    lat = s.get(key_lat) or s.get("lat") or s.get("Latitude")
-    lon = s.get(key_lon) or s.get("lon") or s.get("Longitude")
-    try:
-        return (float(lat), float(lon)) if lat is not None and lon is not None else (None, None)
-    except Exception:
-        return (None, None)
-
-def _compute_score(
-    school_basic: Dict[str, Any],
-    user_level: Optional[str],
-    user_ccas: List[str],
-    user_subjects: List[str],
-    user_lat: Optional[float],
-    user_lon: Optional[float],
-    travel_km: Optional[float],
-    weights: Dict[str, float],
-) -> Dict[str, Any]:
-    """
-    Combines:
-      - CCA overlap (0..1)
-      - Subject overlap (0..1)
-      - Level match (0..1)
-      - Distance score (0..1)
-    Returns: {'score': float, 'reasons': {...}}
-    """
-    # 1) Enrich with details (CCAs & subjects) via existing service (cached)
-    name = _get_school_name(school_basic)
-    details = get_school_details(name) or {}
-
-    school_ccas = _to_list(details.get("ccas"))
-    school_subjects = _to_list(details.get("subjects"))
-
-    s_cca = _jaccard(user_ccas, school_ccas)
-    s_subj = _jaccard(user_subjects, school_subjects)
-    s_level = _level_match(user_level, school_basic.get("mainlevel_code") or school_basic.get("level"))
-
-    sch_lat, sch_lon = _pick_coord(school_basic)
-    s_dist = _distance_score(user_lat, user_lon, sch_lat, sch_lon, travel_km)
-
-    total = (
-        weights.get("cca", 0.40)      * s_cca +
-        weights.get("subjects", 0.25) * s_subj +
-        weights.get("level", 0.15)    * s_level +
-        weights.get("distance", 0.20) * s_dist
-    )
-
-    return {
-        "score": round(float(total), 4),
-        "reasons": {
-            "cca_overlap": s_cca,
-            "subject_overlap": s_subj,
-            "level_match": s_level,
-            "distance": s_dist,
-            "weights": weights
-        },
-        "details": {
-            "ccas": school_ccas,
-            "subjects": school_subjects
-        }
-    }
-
-
-# -----------------------------
-# Recommendation — route
-# -----------------------------
-@school_bp.route("/recommend", methods=["GET", "POST"])
-def recommend_schools():
-    """
-    GET or POST /api/schools/recommend
-
-    POST JSON example:
-    {
-      "level": "secondary",
-      "ccas": ["basketball","choir"],
-      "subjects": ["physics","computing"],   // optional
-      "lat": 1.309, "lon": 103.82,          // optional
-      "travel_km": 8,                        // optional
-      "zone": "north",                       // optional quick filter
-      "type": "government",                  // optional quick filter
-      "limit": 20,                           // optional
-      "weights": {"cca":0.4,"subjects":0.25,"level":0.15,"distance":0.2}  // optional
-    }
-
-    GET query example (works in browser):
-      /api/schools/recommend?level=secondary&ccas=basketball,choir&subjects=computing,physics&lat=1.309&lon=103.82&travel_km=8&limit=10
-    """
-    try:
-        # -------- accept both POST (JSON) and GET (query params) --------
-        if request.method == "POST":
-            data = request.get_json(silent=True) or {}
+    dist_score = 0.0
+    if max_km and user_lat is not None and user_lon is not None and lat is not None and lon is not None:
+        d = _haversine(user_lat, user_lon, lat, lon)
+        if d is None:
+            dist_score = 0.0
         else:
-            args = request.args
+            # 1.0 if within max_km, else decay
+            dist_score = max(0.0, 1.0 - max(0.0, (d - max_km)) / (max_km*2))
+    else:
+        # Neutral if we don't have distance data
+        dist_score = 0.5 if weights.get("distance") else 0.0
 
-            def split_list(val):
-                if not val:
-                    return []
-                return [s.strip() for s in val.split(",") if s.strip()]
+    score = (
+        weights.get("cca", 0.4) * cca_score +
+        weights.get("subjects", 0.25) * subj_score +
+        weights.get("level", 0.15) * level_score +
+        weights.get("distance", 0.2) * dist_score
+    )
+    reasons = {
+        "cca_matches": list(cca_prefs & school_ccas),
+        "subject_matches": list(subj_prefs & school_subjects),
+        "level_match": bool(level_score == 1.0),
+    }
+    return score, reasons
 
-            data = {
-                "level": args.get("level"),
-                "ccas": split_list(args.get("ccas")),
-                "subjects": split_list(args.get("subjects")),
-                "lat": float(args.get("lat")) if args.get("lat") else None,
-                "lon": float(args.get("lon")) if args.get("lon") else None,
-                "travel_km": float(args.get("travel_km")) if args.get("travel_km") else None,
-                "zone": args.get("zone"),
-                "type": args.get("type"),
-                "limit": int(args.get("limit")) if args.get("limit") else None,
-                "weights": None,  # keep weights simple for GET; you can extend if needed
-            }
 
-        # -------- read inputs from unified 'data' --------
-        level      = data.get("level")
-        user_ccas  = _to_list(data.get("ccas"))
-        user_subjs = _to_list(data.get("subjects"))
-        lat        = data.get("lat")
-        lon        = data.get("lon")
-        travel_km  = data.get("travel_km")
-        zone_pref  = (data.get("zone") or "").strip().lower()
-        type_pref  = (data.get("type") or "").strip().lower()
-        limit      = int(data.get("limit") or 25)
-        weights    = data.get("weights") or {}
+school_bp.post("/recommend")
+@school_bp.get("/recommend")
+def recommend():
+    # This endpoint uses current user's saved preferences if not provided in body/query.
+    u = current_user()
+    # Parse input
+    data = request.get_json(silent=True) or {}
+    level = data.get("level") or request.args.get("level")
+    subjects = data.get("subjects") or []
+    ccas = data.get("ccas") or []
+    travel_km = data.get("travel_km") or request.args.get("travel_km")
+    user_lat = data.get("lat")
+    user_lon = data.get("lon")
+    limit = int(data.get("limit") or request.args.get("limit") or 999999)
+    weights = data.get("weights") or {"cca":0.4,"subjects":0.25,"level":0.15,"distance":0.2}
 
-        # 1) load candidate schools (cached in services.data_fetcher)
-        items = get_schools()
+    # If no explicit prefs, require login to use saved prefs
+    if not (level or subjects or ccas or travel_km):
+        if not u:
+            return {"error":"Login required for personalized recommendations"}, 401
+        prefs = read_preferences(u.id)
+    else:
+        prefs = {"level": level, "subjects": subjects, "ccas": ccas, "max_distance_km": travel_km}
 
-        # 2) lightweight pre-filter
-        cand = []
-        for s in items:
-            lvl  = (s.get("mainlevel_code") or s.get("level") or "").strip().lower()
-            zone = (s.get("zone_code") or s.get("zone") or "").strip().lower()
-            typ  = (s.get("type_code") or s.get("type") or "").strip().lower()
+    all_schools = get_schools()
+    scored = []
+    for s in all_schools:
+        sc, reasons = _score_school(s, prefs, weights, user_lat=user_lat, user_lon=user_lon)
+        scored.append({
+            "school_name": s["school_name"],
+            "mainlevel_code": s.get("mainlevel_code"),
+            "zone_code": s.get("zone_code"),
+            "type_code": s.get("type_code"),
+            "address": s.get("address"),
+            "score": sc,
+            "score_percent": round(max(0.0, min(1.0, sc)) * 100),
+            "reasons": reasons
+        })
 
-            if level and _alias_level(level) and _alias_level(lvl) and _alias_level(level) != _alias_level(lvl):
-                continue
-            if zone_pref and zone_pref != zone:
-                continue
-            if type_pref and type_pref != typ:
-                continue
-            cand.append(s)
+    # Sort by score desc, tie-break alphabetically A→Z
+    scored.sort(key=lambda x: (-x["score"], x["school_name"].lower()))
+    return {"ok": True, "count": len(scored), "items": scored, "preferences_used": prefs}
 
-        if not cand:
-            cand = items
+@school_bp.get("/options")
+def options():
+    """Return recognized options (no free-text) for levels, zones (locations),
+    types, subjects, and CCAs, derived from datasets/services."""
+    items = get_schools() or []
+    levels = sorted({(s.get("mainlevel_code") or "").strip().upper() for s in items if s.get("mainlevel_code")})
+    zones = sorted({(s.get("zone_code") or "").strip().upper() for s in items if s.get("zone_code")})
+    types = sorted({(s.get("type_code") or "").strip().upper() for s in items if s.get("type_code")})
 
-        # 3) score each candidate (uses get_school_details cache internally)
-        scored = []
-        for s in cand:
-            res = _compute_score(
-                school_basic = s,
-                user_level   = level,
-                user_ccas    = user_ccas,
-                user_subjects= user_subjs,
-                user_lat     = lat,
-                user_lon     = lon,
-                travel_km    = travel_km,
-                weights      = weights
-            )
-            scored.append({
-                "name": _get_school_name(s),
-                "level": s.get("mainlevel_code") or s.get("level"),
-                "zone_code": s.get("zone_code"),
-                "type_code": s.get("type_code"),
-                "address": s.get("address"),
-                "latitude": s.get("latitude") or s.get("lat"),
-                "longitude": s.get("longitude") or s.get("lon"),
-                "score": res["score"],
-                "reasons": res["reasons"],
-                "details": res["details"]
-            })
+    subjects, ccas = [], []
+    try:
+        from services.data_fetcher import fetch_subjects_options, fetch_ccas_options  # type: ignore
+        subjects = fetch_subjects_options() or []
+        ccas = fetch_ccas_options() or []
+    except Exception:
+        seen_subj, seen_ccas = set(), set()
+        for s in items[:50]:
+            d = get_school_details(s.get("school_name"))
+            for sub in (d or {}).get("subjects") or []:
+                if isinstance(sub, str) and sub.strip():
+                    seen_subj.add(sub.strip())
+            for c in (d or {}).get("ccas") or []:
+                if isinstance(c, str) and c.strip():
+                    seen_ccas.add(c.strip())
+        subjects = sorted(seen_subj)
+        ccas = sorted(seen_ccas)
 
-        scored.sort(key=lambda x: x["score"], reverse=True)
-        return jsonify({"ok": True, "count": min(limit, len(scored)), "items": scored[:limit]})
-    except Exception as e:
-        print("❌ recommend_schools error:", e)
-        return jsonify({"ok": False, "error": "Failed to compute recommendations"}), 500
+    return {"ok": True, "levels": levels, "zones": zones, "types": types, "subjects": subjects, "ccas": ccas}
+
