@@ -1,1 +1,69 @@
-import React,{useState}from "react";import {Button}from "./ui/button";import {Input}from "./ui/input";import {Tabs,TabsContent,TabsList,TabsTrigger}from "./ui/tabs";import {login,register}from "../lib/api";export const AuthModal:React.FC<{isOpen:boolean;onClose:()=>void;mode:"login"|"signup";onAuth:(user:any)=>void}>=({isOpen,onClose,mode,onAuth})=>{const[active,setActive]=useState<"login"|"signup">(mode);const[email,setEmail]=useState("");const[password,setPassword]=useState("");const[name,setName]=useState("");const[address,setAddress]=useState("");const[busy,setBusy]=useState(false);if(!isOpen)return null;async function doLogin(){try{setBusy(true);const u=await login(email,password);onAuth(u);}catch(e:any){alert(e.message||"Login failed");}finally{setBusy(false);}}async function doSignup(){try{setBusy(true);const u=await register({name,email,password,address});onAuth(u);}catch(e:any){alert(e.message||"Signup failed");}finally{setBusy(false);}}return(<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30"><div className="card w-full max-w-md p-4"><div className="flex items-center justify-between mb-3"><h3 className="font-semibold text-lg">Welcome to SchoolFit</h3><button className="btn" onClick={onClose}>✕</button></div><Tabs defaultValue={active as any}><TabsList><TabsTrigger value="login" active={active==="login"} onClick={()=>setActive("login")}>Login</TabsTrigger><TabsTrigger value="signup" active={active==="signup"} onClick={()=>setActive("signup")}>Sign Up</TabsTrigger></TabsList><TabsContent value="login" active={active==="login"} className="mt-3"><div className="space-y-2"><Input type="email" placeholder="you@email.com" value={email} onChange={e=>setEmail(e.target.value)}/><Input type="password" placeholder="Your password" value={password} onChange={e=>setPassword(e.target.value)}/><Button disabled={busy} onClick={doLogin}>Login</Button></div></TabsContent><TabsContent value="signup" active={active==="signup"} className="mt-3"><div className="space-y-2"><Input placeholder="Your name" value={name} onChange={e=>setName(e.target.value)}/><Input type="email" placeholder="you@email.com" value={email} onChange={e=>setEmail(e.target.value)}/><Input placeholder="Address (optional)" value={address} onChange={e=>setAddress(e.target.value)}/><Input type="password" placeholder="Create a password" value={password} onChange={e=>setPassword(e.target.value)}/><Button disabled={busy} onClick={doSignup}>Create Account</Button></div></TabsContent></Tabs></div></div>)};
+import React, { useState } from "react";
+import { Card } from "./ui/card";
+import { Button } from "./ui/button";
+import { login, signup } from "../lib/api";
+
+type Props = {
+  onClose: () => void;
+  onAuthed: (user: any) => void;
+};
+
+export const AuthModal: React.FC<Props> = ({ onClose, onAuthed }) => {
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    try {
+      setError(null);
+      setLoading(true);
+      let resp;
+      if (mode === "signup") {
+        resp = await signup(name, email, password);
+      } else {
+        resp = await login(email, password);
+      }
+      onAuthed(resp.user);
+      onClose();
+    } catch (e: any) {
+      setError(e.message || "Failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <Card className="p-4 w-full max-w-md bg-white rounded-xl">
+        <div className="flex items-center justify-between">
+          <div className="text-lg font-semibold">{mode === "login" ? "Sign in" : "Sign up"}</div>
+          <button onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        {mode === "signup" && (
+          <div className="mt-3">
+            <div className="text-sm mb-1">Name</div>
+            <input className="border rounded px-2 py-2 w-full" value={name} onChange={(e)=>setName(e.target.value)} placeholder="Your name" />
+          </div>
+        )}
+        <div className="mt-3">
+          <div className="text-sm mb-1">Email</div>
+          <input className="border rounded px-2 py-2 w-full" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@example.com" />
+        </div>
+        <div className="mt-3">
+          <div className="text-sm mb-1">Password</div>
+          <input type="password" className="border rounded px-2 py-2 w-full" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="••••••••" />
+        </div>
+        {error && <div className="mt-3 text-red-600 text-sm">{error}</div>}
+        <div className="mt-4 flex items-center gap-2">
+          <Button onClick={submit} disabled={loading}>{loading ? "Please wait…" : (mode === "login" ? "Sign in" : "Sign up")}</Button>
+          <Button variant="outline" onClick={()=>setMode(mode==="login"?"signup":"login")}>
+            {mode === "login" ? "Create account" : "I have an account"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+};

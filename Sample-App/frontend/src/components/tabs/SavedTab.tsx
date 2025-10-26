@@ -47,7 +47,11 @@ export const SavedTab: React.FC<SavedTabProps> = ({ user, onViewDetails }) => {
       ) : (
         <div className="grid gap-4">
           {savedSchools.map((school: any, index: number) => (
-            <div key={index} className="bg-card border rounded-lg p-4 hover:shadow-md transition">
+            <div 
+              key={index} 
+              className="bg-card border rounded-lg p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50"
+              onClick={() => onViewDetails(school.school_name)}
+            >
               <h3 className="font-semibold text-lg">{school.school_name}</h3>
               <p className="text-muted-foreground text-sm mt-1">{school.address}</p>
               
@@ -59,13 +63,6 @@ export const SavedTab: React.FC<SavedTabProps> = ({ user, onViewDetails }) => {
                     </span>
                   )}
                 </div>
-                
-                <button 
-                  onClick={() => onViewDetails(school.school_name)}
-                  className="text-primary hover:text-primary/80 text-sm font-medium"
-                >
-                  View Details
-                </button>
               </div>
             </div>
           ))}
