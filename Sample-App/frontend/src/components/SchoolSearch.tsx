@@ -54,7 +54,7 @@ export const SchoolSearch: React.FC<{
     <Card className="p-4">
       <div className="flex flex-col md:flex-row gap-2 items-center">
         <Input placeholder="Search Schools" value={q} onChange={(e) => setQ(e.target.value)}
-	className="md:max-w-[560px] lg:max-w-[1640px]"/>
+	className="md:max-w-[560px] lg:max-w-[1040px]"/>
 
         <select className="border rounded px-2 py-2" value={level} onChange={(e) => setLevel(e.target.value)}>
           <option value="">Any level</option>
