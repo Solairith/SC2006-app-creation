@@ -54,15 +54,49 @@ export async function getPreferences(): Promise<any> {
   return j(r);
 }
 
-export async function savePreferences(prefs: Preferences) {
-  const r = await fetch(`${BACKEND_BASE}/api/preferences`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(prefs),
-  });
-  return j(r);
-}
+
+// In lib/api.ts - update savePreferences function
+export const savePreferences = async (preferences: {
+  level?: string;
+  subjects?: string[];
+  ccas?: string[];
+  max_distance_km?: number;
+  home_address?: string;
+}) => {
+  try {
+    console.log('Saving preferences:', preferences);
+    
+    const response = await fetch('/api/preferences', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(preferences),
+      credentials: 'include',
+    });
+    
+    console.log('Response status:', response.status);
+    
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.error('Non-JSON response:', text.substring(0, 200));
+      throw new Error('Server returned non-JSON response');
+    }
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to save preferences');
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error in savePreferences:', error);
+    throw error;
+  }
+};
 
 // --- Schools ---
 export type School = {
@@ -99,12 +133,38 @@ export async function getSchoolDetails(name: string) {
 }
 
 
-export async function getRecommendations(body?: any) {
-  const r = await fetch(`${BACKEND_BASE}/api/schools/recommend`, {
-    method: body ? "POST" : "GET",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return j(r);
-}
+export const getRecommendations = async (): Promise<{ items: any[], error?: string }> => {
+  try {
+
+    const prefsResponse = await fetch('/api/preferences', {
+      method: 'GET',
+      credentials: 'include',
+    });
+    
+    let homeAddress = '';
+    if (prefsResponse.ok) {
+      const prefsData = await prefsResponse.json();
+      homeAddress = prefsData.home_address || '';
+    }
+
+    // Call recommendations with home address
+    const url = homeAddress 
+      ? `/api/schools/recommend?home_address=${encodeURIComponent(homeAddress)}`
+      : '/api/schools/recommend';
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      return { items: [], error: error.error || 'Failed to get recommendations' };
+    }
+    
+    const data = await response.json();
+    return { items: data.items || [] };
+  } catch (error: any) {
+    return { items: [], error: error.message || 'Failed to get recommendations' };
+  }
+};
