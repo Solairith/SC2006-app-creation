@@ -60,6 +60,7 @@ def ensure_schema():
             user_id INTEGER PRIMARY KEY,
             level TEXT,
             max_distance_km REAL,
+            home_address TEXT,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS user_subjects(
@@ -76,18 +77,23 @@ def ensure_schema():
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
         );
     """)
+    try:
+        db.execute("SELECT home_address FROM user_preferences LIMIT 1;")
+    except:
+        db.execute("ALTER TABLE user_preferences ADD COLUMN home_address TEXT;")
     db.commit()
 
 def save_preferences(user_id: int, level: str | None, max_distance_km: float | None,
-                     subjects: list[str], ccas: list[str]):
+                     subjects: list[str], ccas: list[str], home_address: str | None):
     db = get_db()
     exists = db.execute("SELECT 1 FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
     if exists:
-        db.execute("UPDATE user_preferences SET level=?, max_distance_km=? WHERE user_id=?",
-                   (level, max_distance_km, user_id))
+        db.execute("UPDATE user_preferences SET level=?, max_distance_km=?, home_address=? WHERE user_id=?",
+                   (level, max_distance_km, home_address, user_id)) 
     else:
-        db.execute("INSERT INTO user_preferences(user_id, level, max_distance_km) VALUES(?,?,?)",
-                   (user_id, level, max_distance_km))
+        db.execute("INSERT INTO user_preferences(user_id, level, max_distance_km, home_address) VALUES(?,?,?,?)",
+                   (user_id, level, max_distance_km, home_address))  
+    
     db.execute("DELETE FROM user_subjects WHERE user_id=?", (user_id,))
     db.execute("DELETE FROM user_ccas WHERE user_id=?", (user_id,))
     for s in subjects or []:
@@ -102,13 +108,21 @@ def save_preferences(user_id: int, level: str | None, max_distance_km: float | N
 
 def read_preferences(user_id: int) -> dict:
     db = get_db()
-    pref = db.execute("SELECT level, max_distance_km FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
+    pref = db.execute("SELECT level, max_distance_km, home_address FROM user_preferences WHERE user_id=?", (user_id,)).fetchone()
     level = pref["level"] if pref else None
     max_distance_km = pref["max_distance_km"] if pref else None
+    home_address = pref["home_address"] if pref else None
     subjects = [r["subject_name"] for r in db.execute(
         "SELECT subject_name FROM user_subjects WHERE user_id=?", (user_id,)
     ).fetchall()]
     ccas = [r["cca_name"] for r in db.execute(
         "SELECT cca_name FROM user_ccas WHERE user_id=?", (user_id,)
     ).fetchall()]
-    return {"level": level, "max_distance_km": max_distance_km, "subjects": subjects, "ccas": ccas}
+
+    return {
+        "level": level, 
+        "max_distance_km": max_distance_km, 
+        "home_address": home_address,
+        "subjects": subjects, 
+        "ccas": ccas
+    }

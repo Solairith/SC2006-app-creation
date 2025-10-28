@@ -1,6 +1,6 @@
 # routes/schools.py
 
-# from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify
 from services.data_fetcher import get_schools, get_school_details
 from models.user_model import current_user, read_preferences
 from math import radians, sin, cos, sqrt, atan2
@@ -282,3 +282,48 @@ def options():
 
     return {"ok": True, "levels": levels, "zones": zones, "types": types, "subjects": subjects, "ccas": ccas}
 
+## FOR DEBUGGING
+@school_bp.get("/recommend-debug")
+def recommend_debug():
+    u = current_user()
+    if not u:
+        return {"error": "Not logged in"}, 401
+    
+    # Get user preferences
+    prefs = read_preferences(u.id)
+    home_address = prefs.get('home_address', '')
+    
+    # Test geocoding
+    user_lat, user_lon = None, None
+    if home_address:
+        user_lat, user_lon = _geocode_address(home_address)
+    
+    # Get a sample school
+    schools = get_schools()
+    sample_school = schools[14] if schools else {}
+    
+    # Calculate distance for sample school
+    sample_distance = None
+    sample_lat, sample_lon = _geocode_address(sample_school.get('address', ''))
+    if user_lat and user_lon and sample_school.get('latitude') and sample_school.get('longitude'):
+        sample_distance = _haversine(user_lat, user_lon, 
+                                   sample_school['latitude'], 
+                                   sample_school['longitude'])
+    
+    return {
+        "user": {
+            "id": u.id,
+            "home_address": home_address,
+            "geocoded_coords": {"lat": user_lat, "lon": user_lon}
+        },
+        "sample_school": {
+            "name": sample_school.get("school_name"),
+            "address": sample_school.get("address"),
+            "coordinates": {
+                "lat": sample_school.get("latitude"),
+                "lon": sample_school.get("longitude")
+            }
+        },
+        "calculated_distance_km": sample_distance,
+        "all_preferences": prefs
+    }
