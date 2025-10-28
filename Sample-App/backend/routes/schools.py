@@ -1,9 +1,12 @@
-
 # routes/schools.py
-from flask import Blueprint, request, jsonify
+
+# from flask import Blueprint, request, jsonify
 from services.data_fetcher import get_schools, get_school_details
 from models.user_model import current_user, read_preferences
 from math import radians, sin, cos, sqrt, atan2
+import requests
+from urllib.parse import urlencode, quote_plus
+from typing import Optional
 
 school_bp = Blueprint("schools", __name__, url_prefix="/api/schools")
 
@@ -87,17 +90,18 @@ def _score_school(school: dict, prefs: dict, weights: dict, user_lat=None, user_
     subj_score = (len(subj_prefs & school_subjects) / max(1, len(subj_prefs))) if subj_prefs else 0.0
     level_score = 1.0 if (lvl_pref and school_level == lvl_pref) else (0.0 if lvl_pref else 0.0)
 
+    # Distance
+    distance_km = None
     dist_score = 0.0
     if max_km and user_lat is not None and user_lon is not None and lat is not None and lon is not None:
-        d = _haversine(user_lat, user_lon, lat, lon)
-        if d is None:
-            dist_score = 0.0
-        else:
-            # 1.0 if within max_km, else decay
-            dist_score = max(0.0, 1.0 - max(0.0, (d - max_km)) / (max_km*2))
+        distance_km = _haversine(user_lat, user_lon, lat, lon)
+        if distance_km is not None:
+            # 1.0 if within max_km, then decays linearly for the next max_km (soft cap)
+            dist_score = max(0.0, 1.0 - max(0.0, (distance_km - float(max_km))) / (float(max_km) * 2.0))
     else:
-        # Neutral if we don't have distance data
-        dist_score = 0.5 if weights.get("distance") else 0.0
+        # If we truly have no distance info, don't contribute (keep 0.0).
+        # (Previously this was 0.5 which masked lack of data.)
+        dist_score = 0.0
 
     score = (
         weights.get("cca", 0.4) * cca_score +
@@ -109,35 +113,119 @@ def _score_school(school: dict, prefs: dict, weights: dict, user_lat=None, user_
         "cca_matches": list(cca_prefs & school_ccas),
         "subject_matches": list(subj_prefs & school_subjects),
         "level_match": bool(level_score == 1.0),
+        "distance_km": round(distance_km, 3) if distance_km is not None else None,
+        "distance_score": dist_score,
+        "weights": weights
     }
     return score, reasons
 
 
-school_bp.post("/recommend")
+def _geocode_address(addr: str) -> tuple[Optional[float], Optional[float]]:
+    """
+    Geocode a home address -> (lat, lon).
+    1) OneMap Singapore common API (no key for basic search)
+    2) Nominatim (OpenStreetMap) fallback
+    Returns (lat, lon) as floats, or (None, None) if not found.
+    """
+    if not addr or not str(addr).strip():
+        return (None, None)
+
+    # --- OneMap Singapore ---
+    try:
+        url = (
+            "https://developers.onemap.sg/commonapi/search?"
+            + urlencode({"searchVal": addr, "returnGeom": "Y", "getAddrDetails": "Y", "pageNum": 1})
+        )
+        r = requests.get(url, timeout=12)
+        if r.ok:
+            js = r.json()
+            results = js.get("results") or []
+            if results:
+                lat = results[0].get("LATITUDE")
+                lon = results[0].get("LONGITUDE")
+                if lat and lon:
+                    return (float(lat), float(lon))
+    except Exception:
+        pass
+
+    # --- Nominatim fallback ---
+    try:
+        headers = {"User-Agent": "SchoolFit/1.0 (education app; mailto:noreply@example.com)"}
+        url = "https://nominatim.openstreetmap.org/search?" + urlencode({"q": addr, "format": "json", "limit": 1})
+        r = requests.get(url, headers=headers, timeout=12)
+        if r.ok:
+            arr = r.json()
+            if isinstance(arr, list) and arr:
+                lat = arr[0].get("lat")
+                lon = arr[0].get("lon")
+                if lat and lon:
+                    return (float(lat), float(lon))
+    except Exception:
+        pass
+
+    return (None, None)
+
+@school_bp.post("/recommend")
 @school_bp.get("/recommend")
 def recommend():
     # This endpoint uses current user's saved preferences if not provided in body/query.
     u = current_user()
     # Parse input
     data = request.get_json(silent=True) or {}
+    # allow GET overrides
     level = data.get("level") or request.args.get("level")
-    subjects = data.get("subjects") or []
-    ccas = data.get("ccas") or []
+    subjects = data.get("subjects") or request.args.get("subjects") or []
+    ccas = data.get("ccas") or request.args.get("ccas") or []
     travel_km = data.get("travel_km") or request.args.get("travel_km")
+    home_address = (data.get("home_address") or request.args.get("home_address") or "").strip()
+
+    # Support comma-separated strings for GET
+    if isinstance(subjects, str):
+        subjects = [s.strip() for s in subjects.split(",") if s.strip()]
+    if isinstance(ccas, str):
+        ccas = [s.strip() for s in ccas.split(",") if s.strip()]
+
+    # coerce travel_km to float if provided
+    try:
+        travel_km = float(travel_km) if travel_km is not None else None
+    except Exception:
+        travel_km = None
+
+    # Coordinates may be provided directly
     user_lat = data.get("lat")
     user_lon = data.get("lon")
+    if user_lat is None and request.args.get("lat"):
+        try:
+            user_lat = float(request.args.get("lat"))
+        except Exception:
+            user_lat = None
+    if user_lon is None and request.args.get("lon"):
+        try:
+            user_lon = float(request.args.get("lon"))
+        except Exception:
+            user_lon = None
+
     limit = int(data.get("limit") or request.args.get("limit") or 999999)
     weights = data.get("weights") or {"cca":0.4,"subjects":0.25,"level":0.15,"distance":0.2}
 
     # If no explicit prefs, require login to use saved prefs
     if not (level or subjects or ccas or travel_km):
+        u = current_user()
         if not u:
             return {"error":"Login required for personalized recommendations"}, 401
         prefs = read_preferences(u.id)
     else:
         prefs = {"level": level, "subjects": subjects, "ccas": ccas, "max_distance_km": travel_km}
 
-    all_schools = get_schools()
+    # NEW: If no lat/lon but we have a home address, geocode it to get coords
+    if (user_lat is None or user_lon is None) and home_address:
+        g_lat, g_lon = _geocode_address(home_address)
+        if g_lat is not None and g_lon is not None:
+            user_lat, user_lon = g_lat, g_lon
+
+
+     # ---------- FETCH, SCORE, SORT, RETURN ----------
+    all_schools = get_schools() or []
     scored = []
     for s in all_schools:
         sc, reasons = _score_school(s, prefs, weights, user_lat=user_lat, user_lon=user_lon)
@@ -147,14 +235,23 @@ def recommend():
             "zone_code": s.get("zone_code"),
             "type_code": s.get("type_code"),
             "address": s.get("address"),
+            "distance_km": reasons.get("distance_km"),   # ✅ real distance
             "score": sc,
             "score_percent": round(max(0.0, min(1.0, sc)) * 100),
             "reasons": reasons
         })
 
-    # Sort by score desc, tie-break alphabetically A→Z
+    # Sort by score desc, tie-break alphabetically; apply limit
     scored.sort(key=lambda x: (-x["score"], x["school_name"].lower()))
-    return {"ok": True, "count": len(scored), "items": scored, "preferences_used": prefs}
+    items = scored[:limit]
+
+    return {
+        "ok": True,
+        "count": len(items),
+        "items": items,
+        "preferences_used": prefs,
+        "user_coords": {"lat": user_lat, "lon": user_lon} if (user_lat is not None and user_lon is not None) else None
+    }
 
 @school_bp.get("/options")
 def options():
