@@ -81,8 +81,6 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                 <p><strong>Email:</strong> {user.email}</p>
               </div>
               <div>
-                <p><strong>Account Status:</strong> Active</p>
-                <p><strong>Member since:</strong> {new Date().toLocaleDateString()}</p>
               </div>
             </div>
           </div>

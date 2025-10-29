@@ -304,7 +304,7 @@ def recommend_debug():
     
     # Calculate distance for sample school
     sample_distance = None
-    sample_lat, sample_lon = _geocode_address(sample_school.get('address', ''))
+    # sample_lat, sample_lon = _geocode_address()
     if user_lat and user_lon and sample_school.get('latitude') and sample_school.get('longitude'):
         sample_distance = _haversine(user_lat, user_lon, 
                                    sample_school['latitude'], 
