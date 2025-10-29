@@ -1,5 +1,4 @@
 # backend/models/user_model.py
-# backend/models/user_model.py
 from utils.db import get_db
 from flask import session
 from werkzeug.security import generate_password_hash, check_password_hash
