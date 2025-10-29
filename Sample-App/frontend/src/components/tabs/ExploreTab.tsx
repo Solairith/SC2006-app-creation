@@ -13,7 +13,7 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
     q: '',
     level: '',
     zone: '',
-    limit: 50,
+    limit: 999,
     offset: 0
   })
 
@@ -175,4 +175,5 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
       </div>
     </div>
   )
+
 }
