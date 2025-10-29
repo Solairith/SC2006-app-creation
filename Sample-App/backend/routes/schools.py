@@ -1,14 +1,25 @@
 # routes/schools.py
-
 from flask import Blueprint, request, jsonify
 from services.data_fetcher import get_schools, get_school_details
 from models.user_model import current_user, read_preferences
 from math import radians, sin, cos, sqrt, atan2
-import requests
-from urllib.parse import urlencode, quote_plus
-from typing import Optional
+import requests, time
+from urllib.parse import urlencode
+from typing import Optional, Tuple
+from functools import lru_cache
+import os
+
+
 
 school_bp = Blueprint("schools", __name__, url_prefix="/api/schools")
+
+# 🔐 OneMap token (recommended: set env var ONEMAP_TOKEN)
+ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo5NzkxLCJmb3JldmVyIjpmYWxzZSwiaXNzIjoiT25lTWFwIiwiaWF0IjoxNzYxNzMyMjYzLCJuYmYiOjE3NjE3MzIyNjMsImV4cCI6MTc2MTk5MTQ2MywianRpIjoiMzU1ZGNmNDUtNWIxYy00NjNhLWI0ZDItMzQ3YzI5MTUxZDA4In0.n0KpkXwUYUA-8rbJfBM_IkEOiyGu7X7ipShQAfmGaBDhDDO0XFk1NFbJNWwt_qmMgl94pgQluWVOM0XWV0r0HoLMynGYbgQ9-HXsAz9wDD8Tcb9MzNrd6RFDMicTxYy_neQJU7ywWC2VSJLXhF2IWEEMltn4r6fse3S8ypV8d_vJe1wIt-cJFkwDB6SYJbi5S0pVgeLVh5l5opWa7Iythst545uGTppKgY5aD74xzERONG7FonUEkb4n93s0ZQ5rokn1VMsgKQkronmoC42o48IE8jT3ZthbAJSOc1i-TRkR21HVA_kjMjtN7FWXesSo4H85RipqeQpXH7RPtF28Tg")
+
+# 🔁 in-memory cache for postal → (lat, lon)
+_POSTAL_CACHE: dict[str, dict] = {}   # { "200640": {"lat": 1.30..., "lon": 103.85..., "ts": 1690000000} }
+_POSTAL_TTL_SEC = 24 * 3600           # cache for a day
+
 
 def _normalize_level(lv: str | None) -> str | None:
     if not lv: 
@@ -34,6 +45,75 @@ def _haversine(lat1, lon1, lat2, lon2):
     a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
     c = 2*atan2(sqrt(a), sqrt(1-a))
     return R*c
+
+def _cache_get(postal: str) -> Optional[Tuple[float, float]]:
+    rec = _GEOCODE_CACHE.get(postal)
+    if not rec:
+        return None
+    lat, lon, ts = rec
+    if time.time() - ts > _GEOCODE_TTL:
+        return None
+    return (lat, lon)
+
+def _cache_put(postal: str, lat: float, lon: float) -> None:
+    _GEOCODE_CACHE[postal] = (lat, lon, time.time())
+
+def _is_sg_postal(postal: str) -> bool:
+    return isinstance(postal, str) and len(postal.strip()) == 6 and postal.strip().isdigit()
+
+def _geocode_postal(postal: str) -> tuple[Optional[float], Optional[float]]:
+    """
+    Geocode a **Singapore postal code** using OneMap's Search (elastic) API.
+    Requires a valid OneMap token (Authorization header).
+    Returns (lat, lon) or (None, None) if not found.
+    """
+    if not postal:
+        return (None, None)
+    p = str(postal).strip()
+    if len(p) != 6 or not p.isdigit():
+        return (None, None)
+
+    # cache hit?
+    now = time.time()
+    cached = _POSTAL_CACHE.get(p)
+    if cached and (now - cached.get("ts", 0) < _POSTAL_TTL_SEC):
+        return (cached["lat"], cached["lon"])
+
+    try:
+        url = (
+            "https://www.onemap.gov.sg/api/common/elastic/search?"
+            + urlencode({"searchVal": p, "returnGeom": "Y", "getAddrDetails": "Y", "pageNum": 1})
+        )
+        headers = {"Authorization": f"Bearer {ONEMAP_TOKEN}"} if ONEMAP_TOKEN else {}
+        r = requests.get(url, headers=headers, timeout=10)
+        if r.ok:
+            js = r.json()
+            results = js.get("results") or []
+            if results:
+                lat = results[0].get("LATITUDE")
+                lon = results[0].get("LONGITUDE")
+                if lat and lon:
+                    latf, lonf = float(lat), float(lon)
+                    _POSTAL_CACHE[p] = {"lat": latf, "lon": lonf, "ts": now}
+                    return (latf, lonf)
+    except Exception as e:
+        print(f"[geocode] OneMap postal error: {e}")
+
+    # cache negative to avoid spamming API
+    _POSTAL_CACHE[p] = {"lat": None, "lon": None, "ts": now}
+    return (None, None)
+
+
+def _postal_distance_km(home_postal: Optional[str], school_postal: Optional[str]) -> Optional[float]:
+    if not (home_postal and school_postal):
+        return None
+    lat1, lon1 = _geocode_postal(str(home_postal).strip())
+    lat2, lon2 = _geocode_postal(str(school_postal).strip())
+    if None in (lat1, lon1, lat2, lon2):
+        return None
+    return _haversine(lat1, lon1, lat2, lon2)
+
+
 
 @school_bp.get("/", strict_slashes=False)
 def search():
@@ -72,43 +152,41 @@ def details():
     return {"ok": True, "item": d}
 
 def _score_school(school: dict, prefs: dict, weights: dict, user_lat=None, user_lon=None) -> tuple[float, dict]:
-    # Prepare factors
+    # 1) preference prep
     cca_prefs = set(map(str.lower, prefs.get("ccas") or []))
     subj_prefs = set(map(str.lower, prefs.get("subjects") or []))
-    lvl_pref = _normalize_level(prefs.get("level"))
-    max_km = prefs.get("max_distance_km") or prefs.get("travel_km")
+    lvl_pref   = _normalize_level(prefs.get("level"))
+    max_km     = prefs.get("max_distance_km") or prefs.get("travel_km")
 
     details = get_school_details(school["school_name"]) or {}
-    school_ccas = set(map(str.lower, details.get("ccas", [])))
+    school_ccas     = set(map(str.lower, details.get("ccas", [])))
     school_subjects = set(map(str.lower, details.get("subjects", [])))
-    school_level = (school.get("mainlevel_code") or "").upper()
-    lat = school.get("latitude")
-    lon = school.get("longitude")
+    school_level    = (school.get("mainlevel_code") or "").upper()
 
-    # Factors ∈ [0,1]
-    cca_score = (len(cca_prefs & school_ccas) / max(1, len(cca_prefs))) if cca_prefs else 0.0
-    subj_score = (len(subj_prefs & school_subjects) / max(1, len(subj_prefs))) if subj_prefs else 0.0
+    # 2) distances: geocode school postal → coords
+    distance_km = None
+    dist_score  = 0.0
+    if max_km and user_lat is not None and user_lon is not None:
+        sch_postal = (school.get("postal_code") or "").strip()
+        sch_lat, sch_lon = _geocode_postal(sch_postal)
+        distance_km = _haversine(user_lat, user_lon, sch_lat, sch_lon) if (sch_lat and sch_lon) else None
+        if distance_km is not None:
+            # soft cap: full score within max_km, linear decay across next max_km
+            dist_score = max(0.0, 1.0 - (float(distance_km) / float(max_km)))
+
+    # 3) factors in [0,1]
+    cca_score   = (len(cca_prefs & school_ccas)     / max(1, len(cca_prefs)))   if cca_prefs else 0.0
+    subj_score  = (len(subj_prefs & school_subjects) / max(1, len(subj_prefs))) if subj_prefs else 0.0
     level_score = 1.0 if (lvl_pref and school_level == lvl_pref) else (0.0 if lvl_pref else 0.0)
 
-    # Distance
-    distance_km = None
-    dist_score = 0.0
-    if max_km and user_lat is not None and user_lon is not None and lat is not None and lon is not None:
-        distance_km = _haversine(user_lat, user_lon, lat, lon)
-        if distance_km is not None:
-            # 1.0 if within max_km, then decays linearly for the next max_km (soft cap)
-            dist_score = max(0.0, 1.0 - max(0.0, (distance_km - float(max_km))) / (float(max_km) * 2.0))
-    else:
-        # If we truly have no distance info, don't contribute (keep 0.0).
-        # (Previously this was 0.5 which masked lack of data.)
-        dist_score = 0.0
-
+    # 4) weighted total
     score = (
-        weights.get("cca", 0.4) * cca_score +
+        weights.get("cca", 0.2)       * cca_score +
         weights.get("subjects", 0.25) * subj_score +
-        weights.get("level", 0.15) * level_score +
-        weights.get("distance", 0.2) * dist_score
+        weights.get("level", 0.15)    * level_score +
+        weights.get("distance", 0.4)  * dist_score
     )
+
     reasons = {
         "cca_matches": list(cca_prefs & school_ccas),
         "subject_matches": list(subj_prefs & school_subjects),
@@ -120,128 +198,65 @@ def _score_school(school: dict, prefs: dict, weights: dict, user_lat=None, user_
     return score, reasons
 
 
-def _geocode_address(addr: str) -> tuple[Optional[float], Optional[float]]:
-    """
-    Geocode a home address -> (lat, lon).
-    1) OneMap Singapore common API (no key for basic search)
-    2) Nominatim (OpenStreetMap) fallback
-    Returns (lat, lon) as floats, or (None, None) if not found.
-    """
-    if not addr or not str(addr).strip():
-        return (None, None)
-
-    # --- OneMap Singapore ---
-    try:
-        url = (
-            "https://developers.onemap.sg/commonapi/search?"
-            + urlencode({"searchVal": addr, "returnGeom": "Y", "getAddrDetails": "Y", "pageNum": 1})
-        )
-        r = requests.get(url, timeout=12)
-        if r.ok:
-            js = r.json()
-            results = js.get("results") or []
-            if results:
-                lat = results[0].get("LATITUDE")
-                lon = results[0].get("LONGITUDE")
-                if lat and lon:
-                    return (float(lat), float(lon))
-    except Exception:
-        pass
-
-    # --- Nominatim fallback ---
-    try:
-        headers = {"User-Agent": "SchoolFit/1.0 (education app; mailto:noreply@example.com)"}
-        url = "https://nominatim.openstreetmap.org/search?" + urlencode({"q": addr, "format": "json", "limit": 1})
-        r = requests.get(url, headers=headers, timeout=12)
-        if r.ok:
-            arr = r.json()
-            if isinstance(arr, list) and arr:
-                lat = arr[0].get("lat")
-                lon = arr[0].get("lon")
-                if lat and lon:
-                    return (float(lat), float(lon))
-    except Exception:
-        pass
-
-    return (None, None)
-
 @school_bp.post("/recommend")
 @school_bp.get("/recommend")
 def recommend():
-    # This endpoint uses current user's saved preferences if not provided in body/query.
     u = current_user()
-    # Parse input
     data = request.get_json(silent=True) or {}
-    # allow GET overrides
-    level = data.get("level") or request.args.get("level")
-    subjects = data.get("subjects") or request.args.get("subjects") or []
-    ccas = data.get("ccas") or request.args.get("ccas") or []
-    travel_km = data.get("travel_km") or request.args.get("travel_km")
-    home_address = (data.get("home_address") or request.args.get("home_address") or "").strip()
 
-    # Support comma-separated strings for GET
+    # GET overrides
+    level       = data.get("level")       or request.args.get("level")
+    subjects    = data.get("subjects")    or request.args.get("subjects") or []
+    ccas        = data.get("ccas")        or request.args.get("ccas")     or []
+    travel_km   = data.get("travel_km")   or request.args.get("travel_km")
+    home_postal = (data.get("home_postal") or request.args.get("home_postal") or "").strip()
+
+    # allow comma string for GET
     if isinstance(subjects, str):
         subjects = [s.strip() for s in subjects.split(",") if s.strip()]
     if isinstance(ccas, str):
         ccas = [s.strip() for s in ccas.split(",") if s.strip()]
 
-    # coerce travel_km to float if provided
     try:
         travel_km = float(travel_km) if travel_km is not None else None
     except Exception:
         travel_km = None
 
-    # Coordinates may be provided directly
-    user_lat = data.get("lat")
-    user_lon = data.get("lon")
-    if user_lat is None and request.args.get("lat"):
-        try:
-            user_lat = float(request.args.get("lat"))
-        except Exception:
-            user_lat = None
-    if user_lon is None and request.args.get("lon"):
-        try:
-            user_lon = float(request.args.get("lon"))
-        except Exception:
-            user_lon = None
+    limit   = int(data.get("limit") or request.args.get("limit") or 999999)
+    weights = data.get("weights") or {"cca": 0.2, "subjects": 0.25, "level": 0.15, "distance": 0.4}
 
-    limit = int(data.get("limit") or request.args.get("limit") or 999999)
-    weights = data.get("weights") or {"cca":0.4,"subjects":0.25,"level":0.15,"distance":0.2}
-
-    # If no explicit prefs, require login to use saved prefs
-    if not (level or subjects or ccas or travel_km):
-        u = current_user()
+    # If nothing is provided, require login to read saved prefs
+    if not (level or subjects or ccas or travel_km or home_postal):
         if not u:
-            return {"error":"Login required for personalized recommendations"}, 401
+            return {"error": "Login required for personalized recommendations"}, 401
         prefs = read_preferences(u.id)
+        home_postal = (prefs.get("home_postal") or "").strip()
     else:
         prefs = {"level": level, "subjects": subjects, "ccas": ccas, "max_distance_km": travel_km}
 
-    # NEW: If no lat/lon but we have a home address, geocode it to get coords
-    if (user_lat is None or user_lon is None) and home_address:
-        g_lat, g_lon = _geocode_address(home_address)
-        if g_lat is not None and g_lon is not None:
-            user_lat, user_lon = g_lat, g_lon
+    # Geocode the user's postal once
+    user_lat = user_lon = None
+    if home_postal:
+        user_lat, user_lon = _geocode_postal(home_postal)
 
-
-     # ---------- FETCH, SCORE, SORT, RETURN ----------
+    # ---------- FETCH, SCORE, SORT, RETURN ----------
     all_schools = get_schools() or []
     scored = []
     for s in all_schools:
         sc, reasons = _score_school(s, prefs, weights, user_lat=user_lat, user_lon=user_lon)
         scored.append({
-            "school_name": s["school_name"],
+            "school_name":   s["school_name"],
             "mainlevel_code": s.get("mainlevel_code"),
-            "zone_code": s.get("zone_code"),
-            "type_code": s.get("type_code"),
-            "address": s.get("address"),
-            "distance_km": reasons.get("distance_km"),   # ✅ real distance
-            "score": sc,
-            "score_percent": round(max(0.0, min(1.0, sc)) * 100),
-            "reasons": reasons
+            "zone_code":      s.get("zone_code"),
+            "type_code":      s.get("type_code"),
+            "address":        s.get("address"),
+            "postal_code":    s.get("postal_code"),
+            "distance_km":    reasons.get("distance_km"),
+            "score":          sc,
+            "score_percent":  round(max(0.0, min(1.0, sc)) * 100),
+            "reasons":        reasons
         })
 
-    # Sort by score desc, tie-break alphabetically; apply limit
     scored.sort(key=lambda x: (-x["score"], x["school_name"].lower()))
     items = scored[:limit]
 
@@ -250,8 +265,10 @@ def recommend():
         "count": len(items),
         "items": items,
         "preferences_used": prefs,
+        "home_postal_used": home_postal or None,
         "user_coords": {"lat": user_lat, "lon": user_lon} if (user_lat is not None and user_lon is not None) else None
     }
+
 
 @school_bp.get("/options")
 def options():
@@ -282,48 +299,27 @@ def options():
 
     return {"ok": True, "levels": levels, "zones": zones, "types": types, "subjects": subjects, "ccas": ccas}
 
-## FOR DEBUGGING
 @school_bp.get("/recommend-debug")
 def recommend_debug():
     u = current_user()
     if not u:
         return {"error": "Not logged in"}, 401
-    
-    # Get user preferences
-    prefs = read_preferences(u.id)
-    home_address = prefs.get('home_address', '')
-    
-    # Test geocoding
-    user_lat, user_lon = None, None
-    if home_address:
-        user_lat, user_lon = _geocode_address(home_address)
-    
-    # Get a sample school
+    prefs = read_preferences(u.id) or {}
+    home_postal = (prefs.get("home_postal") or "").strip() or request.args.get("home_postal", "").strip()
+
     schools = get_schools()
-    sample_school = schools[14] if schools else {}
-    
-    # Calculate distance for sample school
-    sample_distance = None
-    # sample_lat, sample_lon = _geocode_address()
-    if user_lat and user_lon and sample_school.get('latitude') and sample_school.get('longitude'):
-        sample_distance = _haversine(user_lat, user_lon, 
-                                   sample_school['latitude'], 
-                                   sample_school['longitude'])
-    
+    sample = schools[0] if schools else {}
+    d_km = None
+    if sample:
+        d_km = _postal_distance_km(home_postal, sample.get("postal_code"))
+
     return {
-        "user": {
-            "id": u.id,
-            "home_address": home_address,
-            "geocoded_coords": {"lat": user_lat, "lon": user_lon}
-        },
+        "user": {"id": getattr(u, "id", None), "home_postal": home_postal},
         "sample_school": {
-            "name": sample_school.get("school_name"),
-            "address": sample_school.get("address"),
-            "coordinates": {
-                "lat": sample_school.get("latitude"),
-                "lon": sample_school.get("longitude")
-            }
+            "name": sample.get("school_name"),
+            "postal_code": sample.get("postal_code"),
+            "address": sample.get("address"),
         },
-        "calculated_distance_km": sample_distance,
-        "all_preferences": prefs
+        "calculated_distance_km": d_km,
+        "prefs": prefs
     }
