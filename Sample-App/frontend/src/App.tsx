@@ -4,7 +4,7 @@ import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card"; // ADD THIS
 import { User } from "lucide-react"; // ADD THIS
 import { getMe, logout } from "./lib/api";
-// In App.tsx - update checkUserPreferences to use getPreferences API
+
 import { getPreferences } from "./lib/api"; // ADD THIS IMPORT
 
 import { Header } from "./components/layout/Header";

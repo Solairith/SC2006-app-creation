@@ -1,5 +1,6 @@
+
 # routes/users.py
-from flask import Blueprint, request, session, jsonify, redirect, url_for, render_template_string
+from flask import Blueprint, request, session, jsonify, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
@@ -19,40 +20,81 @@ user_bp = Blueprint("users", __name__)
 oauth = OAuth()
 
 # ---------------------
-# Google OAuth setup
+# Initialize OAuth
 # ---------------------
-oauth.register(
-    name="google",
-    client_id=os.getenv("GOOGLE_CLIENT_ID"),
-    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
-)
+def init_oauth(app):
+    """Initialize OAuth with the Flask app - call this in app.py"""
+    oauth.init_app(app)
+    oauth.register(
+        name="google",
+        client_id=os.getenv("GOOGLE_CLIENT_ID"),
+        client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+        server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
+        client_kwargs={"scope": "openid email profile"},
+    )
+
 
 # ---------------------
 # GOOGLE LOGIN ROUTES
 # ---------------------
-@user_bp.route("/login/google")
+@user_bp.route("/api/auth/login/google")
 def login_google():
+    """Redirect user to Google login page"""
     redirect_uri = url_for("users.auth_google", _external=True)
     return oauth.google.authorize_redirect(redirect_uri)
 
-@user_bp.route("/auth/google")
+
+@user_bp.route("/callback/google")
 def auth_google():
-    token = oauth.google.authorize_access_token()
-    user_info = oauth.google.parse_id_token(token)
-    google_id = user_info["sub"]
-    email = user_info["email"]
-    name = user_info.get("name", "No Name")
+    """Handle Google OAuth callback"""
+    try:
+        print("=== Starting Google OAuth callback ===")
+        token = oauth.google.authorize_access_token()
+        print(f"Token received: {token is not None}")
+        
+        # FIX: Get user info from the token directly instead of parsing ID token
+        user_info = token.get('userinfo')
+        
+        # If userinfo is not in token, fetch it
+        if not user_info:
+            resp = oauth.google.get('https://www.googleapis.com/oauth2/v2/userinfo')
+            user_info = resp.json()
+        
+        print(f"User info: {user_info}")
+        
+        google_id = user_info["sub"] 
+        email = user_info["email"]
+        name = user_info.get("name", "No Name")
+        
+        print(f"Creating/finding user - Google ID: {google_id}, Email: {email}")
 
-    user = get_user_by_google_id(google_id)
-    if not user:
-        user = create_user_google(google_id, email, name)
+        # Find or create user
+        user = get_user_by_google_id(google_id)
+        if not user:
+            print("User not found, creating new user")
+            user = create_user_google(google_id, email, name)
+        else:
+            print(f"User found: {user.id}")
 
-    # Store user id in session
-    session["uid"] = user.id
-    return redirect(url_for("users.profile"))
-
+        # Store user id in session
+        session["uid"] = user.id
+        print(f"Session set, uid: {session['uid']}")
+        
+        # Redirect to frontend after successful login
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        return redirect(f"{frontend_url}/dashboard")
+        
+    except Exception as e:
+        print(f"=== Google OAuth Error ===")
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        print("=========================")
+        
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        return redirect(f"{frontend_url}/login?error=auth_failed")
+    
 # ---------------------
 # EMAIL/PASSWORD LOGIN
 # ---------------------

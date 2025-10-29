@@ -1,4 +1,3 @@
-// src/components/tabs/ProfileTab.tsx
 import React, { useState, useEffect } from 'react'
 import { UserProfile } from '../UserProfile'
 import { Button } from '../ui/button'
@@ -158,6 +157,12 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+            {currentPreferences.home_address && (
+              <div className="md:col-span-2">
+                <strong className="block text-sm text-muted-foreground mb-1">Home Address</strong>
+                <span className="text-lg">{currentPreferences.home_address}</span>
               </div>
             )}
           </div>

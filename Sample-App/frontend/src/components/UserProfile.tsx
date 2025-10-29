@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
@@ -10,6 +9,7 @@ export const UserProfile: React.FC = () => {
   const [subjects, setSubjects] = useState<string[]>([]);
   const [ccas, setCcas] = useState<string[]>([]);
   const [maxDistance, setMaxDistance] = useState<string>("");
+  const [homeAddress, setHomeAddress] = useState("");
   const [saved, setSaved] = useState(false);
   const [opts, setOpts] = useState<{levels:string[], subjects:string[], ccas:string[]}>({levels:[], subjects:[], ccas:[]});
   const [error, setError] = useState<string | null>(null);
@@ -17,18 +17,17 @@ export const UserProfile: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        // load current
         const r: any = await getPreferences();
         if (r?.ok) {
           setLevel(r.level || "");
           setSubjects(r.subjects || []);
           setCcas(r.ccas || []);
           setMaxDistance(r.max_distance_km != null ? String(r.max_distance_km) : "");
+          setHomeAddress(r.home_address || ""); 
         }
       } catch (e:any) {
-        // not logged in or no prefs
+        
       }
-      // load options
       try {
         const res = await fetch("/api/schools/options", { credentials: "include" });
         const data = await res.json();
@@ -46,6 +45,7 @@ const onSave = async () => {
       subjects: subjects,
       ccas: ccas,
       max_distance_km: maxDistance ? Number(maxDistance) : undefined,
+      home_address: homeAddress || undefined,
     };
     
     console.log('Saving preferences:', preferencesData);
@@ -59,7 +59,7 @@ const onSave = async () => {
     window.dispatchEvent(new CustomEvent('preferences-saved'));
   } catch (e: any) {
     console.error('Failed to save preferences:', e);
-    setError(e.message || "Failed to save");
+    setError(e.message || "Failed to save preferences. Please check console for details.");
   }
 };
 
@@ -67,6 +67,20 @@ const onSave = async () => {
     <Card className="p-4">
       <div className="text-xl font-semibold mb-3">Your Preferences</div>
       <div className="grid md:grid-cols-2 gap-3">
+        {/* ADD HOME ADDRESS FIELD */}
+        <div className="md:col-span-2">
+          <div className="text-sm mb-1">Home Address</div>
+          <input 
+            className="border rounded px-2 py-2 w-full" 
+            placeholder="Enter your home address for distance calculation"
+            value={homeAddress} 
+            onChange={(e) => setHomeAddress(e.target.value)} 
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Your address will be used to calculate distance to schools
+          </p>
+        </div>
+        
         <div>
           <div className="text-sm mb-1">Level</div>
           <select className="border rounded px-2 py-2 w-full" value={level} onChange={(e) => setLevel(e.target.value)}>
