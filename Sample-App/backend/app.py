@@ -2,16 +2,19 @@
 from flask import Flask, g 
 from flask_cors import CORS
 from routes.schools import school_bp
-from routes.users import user_bp
+from routes.users import user_bp, init_oauth
 from routes.health import health_bp
 from utils.db import get_db
 from models.user_model import ensure_schema
+from dotenv import load_dotenv
 import os
+
+load_dotenv()
 
 def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
-
+    
     # Allow local Vite dev server with cookies
     CORS(
         app,
@@ -22,11 +25,14 @@ def create_app():
         ],
     )
 
+    # Initialize OAuth (must be done BEFORE registering blueprints)
+    init_oauth(app)
+
     # Make sure DB schema exists
     with app.app_context():
         ensure_schema()
 
-    # Blueprints
+    # Register Blueprints
     app.register_blueprint(school_bp)
     app.register_blueprint(user_bp)
     app.register_blueprint(health_bp)
