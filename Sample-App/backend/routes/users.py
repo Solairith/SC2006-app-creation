@@ -184,7 +184,7 @@ def put_preferences():
     subjects = data.get("subjects") or []
     ccas = data.get("ccas") or []
     home_address = data.get("home_address")
-    save_preferences(u.id, level, max_distance_km, subjects, ccas)
+    save_preferences(u.id, level, max_distance_km, subjects, ccas, home_address)
     return {"ok": True}
 
 
