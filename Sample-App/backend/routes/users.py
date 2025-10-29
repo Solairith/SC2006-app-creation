@@ -183,6 +183,7 @@ def put_preferences():
     max_distance_km = data.get("max_distance_km")
     subjects = data.get("subjects") or []
     ccas = data.get("ccas") or []
+<<<<<<< HEAD
     save_preferences(u.id, level, max_distance_km, subjects, ccas)
     return {"ok": True}
 
@@ -281,4 +282,8 @@ def delete_subject():
     db = get_db()
     db.execute("DELETE FROM user_subjects WHERE user_id=? AND subject_name=?", (u.id, subject))
     db.commit()
+=======
+    home_address = data.get("home_address")
+    save_preferences(u.id, level, max_distance_km, subjects, ccas, home_address)
+>>>>>>> main
     return {"ok": True}

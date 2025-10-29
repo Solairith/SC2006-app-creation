@@ -103,35 +103,40 @@ export const SchoolDetails: React.FC<{
         </div>
       )}
 
-      {/* Subjects */}
-      {school.subjects && school.subjects.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-lg mt-6 mb-2">Subjects Offered</h3>
-          <div className="flex flex-wrap gap-2">
-            {school.subjects.map((subj, idx) => (
-              <Badge key={idx} variant="secondary">
-                {subj}
-              </Badge>
-            ))}
+      {/* Subjects + CCAs side by side */}
+      {(school.subjects?.length || school.ccas?.length) && (
+        <div className="flex flex-col md:flex-row gap-6 mt-6">
+          {/* Subjects */}
+          {school.subjects && school.subjects.length > 0 && (
+            <div className="flex-1">
+             <h3 className="font-semibold text-lg mb-2">Subjects Offered</h3>
+              <div className="flex flex-wrap gap-2">
+                {school.subjects.map((subj, idx) => (
+                <Badge key={idx} variant="secondary">
+                  {subj}
+                </Badge>
+               ))}
+             </div>
           </div>
-        </div>
-      )}
+          )}
 
       {/* CCAs */}
-      {school.ccas && school.ccas.length > 0 && (
-        <div>
-          <h3 className="font-semibold text-lg mt-6 mb-2">
+     {school.ccas && school.ccas.length > 0 && (
+        <div className="flex-1">
+          <h3 className="font-semibold text-lg mb-2">
             Co-Curricular Activities (CCAs)
-          </h3>
+         </h3>
           <div className="flex flex-wrap gap-2">
             {school.ccas.map((cca, idx) => (
               <Badge key={idx} variant="outline">
-                {cca}
-              </Badge>
+               {cca}
+             </Badge>
             ))}
           </div>
         </div>
       )}
+   </div>
+  )}
     </Card>
   );
 };

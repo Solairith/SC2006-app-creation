@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, g
+from flask import Flask, g 
 from flask_cors import CORS
 from routes.schools import school_bp
 from routes.users import user_bp, init_oauth
