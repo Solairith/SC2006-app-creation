@@ -1,60 +1,44 @@
-// src/components/tabs/SavedTab.tsx
-import React, { useState, useEffect } from 'react'
+import React from "react";
+import { useSavedSchools } from "../context/SavedSchoolsContext";
 
 interface SavedTabProps {
-  user: any
-  onViewDetails: (schoolName: string) => void
+  onViewDetails: (schoolName: string) => void;
 }
 
-export const SavedTab: React.FC<SavedTabProps> = ({ user, onViewDetails }) => {
-  const [savedSchools, setSavedSchools] = useState([])
-  const [loading, setLoading] = useState(true)
+export const SavedTab: React.FC<SavedTabProps> = ({ onViewDetails }) => {
+  const { savedSchools, removeSchool } = useSavedSchools();
 
-  useEffect(() => {
-    fetchSavedSchools()
-  }, [])
-
-  const fetchSavedSchools = async () => {
-    try {
-      // TODO: Implement API call to get user's saved schools
-      // const response = await fetch('/api/auth/favorites')
-      // const data = await response.json()
-      
-      // Mock data for now
-      setSavedSchools([])
-    } catch (error) {
-      console.error('Failed to fetch saved schools:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (loading) {
-    return <div className="text-center py-8">Loading saved schools...</div>
+  if (savedSchools.length === 0) {
+    return (
+      <div className="text-center py-12 bg-card rounded-lg border">
+        <p className="text-muted-foreground text-lg">No saved schools yet</p>
+        <p className="text-muted-foreground mt-2">
+          Explore schools and save them to see them here
+        </p>
+      </div>
+    );
   }
 
   return (
     <div>
       <h2 className="text-2xl font-bold mb-6">Your Saved Schools</h2>
-      
-      {savedSchools.length === 0 ? (
-        <div className="text-center py-12 bg-card rounded-lg border">
-          <p className="text-muted-foreground text-lg">No saved schools yet</p>
-          <p className="text-muted-foreground mt-2">
-            Explore schools and save them to see them here
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {savedSchools.map((school: any, index: number) => (
-            <div 
-              key={index} 
-              className="bg-card border rounded-lg p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50"
+
+      <div className="grid gap-4">
+        {savedSchools.map((school, index) => (
+          <div
+            key={index}
+            className="bg-card border rounded-lg p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50"
+          >
+            <div
               onClick={() => onViewDetails(school.school_name)}
+              className="cursor-pointer"
             >
               <h3 className="font-semibold text-lg">{school.school_name}</h3>
-              <p className="text-muted-foreground text-sm mt-1">{school.address}</p>
-              
+              {school.address && (
+                <p className="text-muted-foreground text-sm mt-1">
+                  {school.address}
+                </p>
+              )}
               <div className="flex items-center justify-between mt-3">
                 <div className="flex gap-2">
                   {school.mainlevel_code && (
@@ -65,9 +49,17 @@ export const SavedTab: React.FC<SavedTabProps> = ({ user, onViewDetails }) => {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+
+            {/* ✅ Remove Button */}
+            <button
+              onClick={() => removeSchool(school.school_name)}
+              className="mt-3 text-sm text-red-600 hover:underline"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
-  )
-}
+  );
+};

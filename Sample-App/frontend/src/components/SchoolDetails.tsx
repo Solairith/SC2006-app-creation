@@ -3,6 +3,7 @@ import { getSchoolDetails, type School } from "../lib/api";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { useSavedSchools } from "./context/SavedSchoolsContext"; // ✅ import context
 
 interface DetailedSchool extends School {
   ccas?: string[];
@@ -19,6 +20,7 @@ export const SchoolDetails: React.FC<{
   const [school, setSchool] = useState<DetailedSchool | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { addSchool, savedSchools, removeSchool } = useSavedSchools(); // ✅ context hooks
 
   useEffect(() => {
     async function load() {
@@ -46,6 +48,8 @@ export const SchoolDetails: React.FC<{
   const type = school.type_code || "";
   const addr = school.address || "";
 
+  const isSaved = savedSchools.some((s) => s.school_name === name);
+
   return (
     <Card className="p-6 space-y-6">
       {/* Header */}
@@ -53,9 +57,30 @@ export const SchoolDetails: React.FC<{
         <div className="text-xl font-semibold flex items-center gap-2">
           {name} {level && <Badge>{level}</Badge>}
         </div>
-        <Button onClick={onBack} variant="outline">
-          Back
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={onBack} variant="outline">
+            Back
+          </Button>
+
+          {/* ✅ Save / Remove Button */}
+          {isSaved ? (
+            <Button variant="destructive" onClick={() => removeSchool(name)}>
+              Remove from Saved
+            </Button>
+          ) : (
+            <Button
+              onClick={() =>
+                addSchool({
+                  school_name: name,
+                  address: addr,
+                  mainlevel_code: level,
+                })
+              }
+            >
+              Save School
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Address + Zone/Type */}
@@ -109,34 +134,34 @@ export const SchoolDetails: React.FC<{
           {/* Subjects */}
           {school.subjects && school.subjects.length > 0 && (
             <div className="flex-1">
-             <h3 className="font-semibold text-lg mb-2">Subjects Offered</h3>
+              <h3 className="font-semibold text-lg mb-2">Subjects Offered</h3>
               <div className="flex flex-wrap gap-2">
                 {school.subjects.map((subj, idx) => (
-                <Badge key={idx} variant="secondary">
-                  {subj}
-                </Badge>
-               ))}
-             </div>
-          </div>
+                  <Badge key={idx} variant="secondary">
+                    {subj}
+                  </Badge>
+                ))}
+              </div>
+            </div>
           )}
 
-      {/* CCAs */}
-     {school.ccas && school.ccas.length > 0 && (
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg mb-2">
-            Co-Curricular Activities (CCAs)
-         </h3>
-          <div className="flex flex-wrap gap-2">
-            {school.ccas.map((cca, idx) => (
-              <Badge key={idx} variant="outline">
-               {cca}
-             </Badge>
-            ))}
-          </div>
+          {/* CCAs */}
+          {school.ccas && school.ccas.length > 0 && (
+            <div className="flex-1">
+              <h3 className="font-semibold text-lg mb-2">
+                Co-Curricular Activities (CCAs)
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {school.ccas.map((cca, idx) => (
+                  <Badge key={idx} variant="outline">
+                    {cca}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
-   </div>
-  )}
     </Card>
   );
 };
