@@ -174,7 +174,12 @@ export const getRecommendations = async (): Promise<{ items: any[], error?: stri
     }
     
     const data = await response.json();
-    return { items: data.items || [] };
+    return {
+      items: ((data.items ?? []) as Array<{ score_percent?: number }>).filter(
+        (i) => Number(i.score_percent ?? 0) > 0
+      ),
+    };
+    
   } catch (error: any) {
     return { items: [], error: error.message || 'Failed to get recommendations' };
   }
