@@ -270,4 +270,5 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
       )}
     </div>
   )
+
 }

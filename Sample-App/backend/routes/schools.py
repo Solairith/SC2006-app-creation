@@ -46,35 +46,6 @@ def _haversine(lat1, lon1, lat2, lon2):
     c = 2*atan2(sqrt(a), sqrt(1-a))
     return R*c
 
-# @school_bp.get("/", strict_slashes=False)
-# def search():
-#     q = (request.args.get("q") or "").strip().lower()
-#     level = _normalize_level(request.args.get("level"))
-#     zone = (request.args.get("zone") or "").strip().upper()
-#     type_code = (request.args.get("type") or "").strip().upper()
-#     limit = int(request.args.get("limit") or 20)
-#     offset = int(request.args.get("offset") or 0)
-
-#     items = get_schools()
-#     def ok(s):
-#         if q and q not in (s.get("school_name") or "").lower():
-#             return False
-#         if level and s.get("mainlevel_code") != level:
-#             return False
-#         if zone and s.get("zone_code") != zone:
-#             return False
-#         if type_code and s.get("type_code") != type_code:
-#             return False
-#         return True
-
-#     filtered = [s for s in items if ok(s)]
-#     total = len(filtered)
-#     sliced = filtered[offset:offset+limit]
-#     return {"items": sliced, "total": total, "limit": limit, "offset": offset, "total_pages": (total+limit-1)//limit}
-
-
-
-## For Debugging
 @school_bp.get("/", strict_slashes=False)
 def search():
     q = (request.args.get("q") or "").strip().lower()
