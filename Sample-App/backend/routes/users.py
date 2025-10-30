@@ -29,12 +29,15 @@ oauth = OAuth()
 def init_oauth(app):
     """Initialize OAuth with the Flask app - call this in app.py"""
     oauth.init_app(app)
+    backend_url = os.getenv("BACKEND_URL", "http://localhost:5000")
+    redirect_uri = f"{backend_url}/api/auth/callback/google"
+    print("Initializing OAuth with redirect URI:", redirect_uri)
     oauth.register(
         name="google",
         client_id=os.getenv("GOOGLE_CLIENT_ID"),
         client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
         server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid email profile"},
+        client_kwargs={"scope": "openid email profile", "redirect_uri": redirect_uri},
     )
 
 

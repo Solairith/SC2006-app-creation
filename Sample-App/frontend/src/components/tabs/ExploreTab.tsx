@@ -1,42 +1,65 @@
 // src/components/tabs/ExploreTab.tsx
 import React, { useState, useEffect } from 'react'
+import { searchSchools, type School } from '../../lib/api'
+import { Button } from '../ui/button'
+import { Badge } from '../ui/badge'
+import { Card } from '../ui/card'
 
 interface ExploreTabProps {
   user: any
   onViewDetails: (schoolName: string) => void
 }
 
+interface SearchFilters {
+  q?: string;
+  level?: string;
+  zone?: string;
+  limit: number;
+  offset: number;
+}
+
 export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) => {
-  const [searchResults, setSearchResults] = useState([])
+  const [items, setItems] = useState<School[]>([])
   const [loading, setLoading] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
   const [filters, setFilters] = useState({
     q: '',
     level: '',
     zone: '',
-    limit: 50,
-    offset: 0
   })
 
-  // Load all schools on component mount and when filters change
-  useEffect(() => {
-    handleSearch()
-  }, [filters.level, filters.zone])
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  const handleSearch = async () => {
+  // Load schools only on initial mount and when pageSize changes
+  useEffect(() => {
+    handleSearch(1)
+  }, [pageSize])
+
+  const handleSearch = async (newPage = 1) => {
     try {
       setLoading(true)
       
-      // Remove empty filters
-      const cleanFilters = Object.fromEntries(
-        Object.entries(filters).filter(([_, value]) => value !== '')
-      )
+      // Build clean filters object with optional properties
+      const cleanFilters: SearchFilters = {
+        limit: pageSize,
+        offset: (newPage - 1) * pageSize
+      }
+
+      // Only add non-empty filters
+      if (filters.q.trim()) cleanFilters.q = filters.q
+      if (filters.level) cleanFilters.level = filters.level
+      if (filters.zone) cleanFilters.zone = filters.zone
       
-      const response = await fetch(`/api/schools?${new URLSearchParams(cleanFilters as any)}`)
-      const data = await response.json()
-      setSearchResults(data.items || [])
+      const response = await searchSchools(cleanFilters)
+      setItems(response.items || [])
+      setTotal(response.total || 0)
+      setPage(newPage) // This updates the page state AFTER the search
     } catch (error) {
       console.error('Search failed:', error)
-      setSearchResults([])
+      setItems([])
+      setTotal(0)
     } finally {
       setLoading(false)
     }
@@ -47,16 +70,69 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
       q: '',
       level: '',
       zone: '',
-      limit: 50,
-      offset: 0
     })
+    handleSearch(1)
   }
 
-  // Handle Enter key in search input
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleSearch()
+      handleSearch(1)
     }
+  }
+
+  // Handle page size change
+  const handlePageSizeChange = (newPageSize: number) => {
+    setPageSize(newPageSize)
+    // handleSearch(1) will be triggered by the useEffect
+  }
+
+  // Handle page navigation
+  const handlePageChange = (newPage: number) => {
+    handleSearch(newPage)
+  }
+
+  function renderPageButtons() {
+    const buttons = []
+    const maxVisiblePages = 5
+    
+    let startPage = Math.max(1, page - 2)
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1)
+    
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1)
+    }
+
+    if (startPage > 1) {
+      buttons.push(
+        <Button key={1} variant="outline" onClick={() => handlePageChange(1)}>
+          1
+        </Button>
+      )
+      if (startPage > 2) {
+        buttons.push(<span key="ellipsis1" className="px-2">...</span>)
+      }
+    }
+
+    for (let p = startPage; p <= endPage; p++) {
+      buttons.push(
+        <Button key={p} variant={p === page ? "default" : "outline"} onClick={() => handlePageChange(p)}>
+          {p}
+        </Button>
+      )
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        buttons.push(<span key="ellipsis2" className="px-2">...</span>)
+      }
+      buttons.push(
+        <Button key={totalPages} variant="outline" onClick={() => handlePageChange(totalPages)}>
+          {totalPages}
+        </Button>
+      )
+    }
+
+    return buttons
   }
 
   return (
@@ -64,86 +140,83 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Explore Schools</h2>
         <div className="text-sm text-muted-foreground">
-          {loading ? 'Loading...' : searchResults.length > 0 ? `${searchResults.length} schools found` : 'No schools found'}
+          {loading ? 'Loading...' : `${total} schools found`}
         </div>
       </div>
 
-      {/* One-line Filter Bar */}
-     <div className="bg-card p-4 rounded-lg border">
-      <div className="flex flex-col sm:flex-row gap-4 items-end">
-        {/* Search Input */}
-        <div className="flex-1 min-w-0">
-          <label className="block text-sm font-medium mb-1">Search</label>
-          <input
-            type="text"
-            placeholder="School name or location..."
-            value={filters.q}
-            onChange={(e) => setFilters({...filters, q: e.target.value})}
-            onKeyPress={handleKeyPress}
-            className="w-full border border-input rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
+      <Card className="p-4">
+        <div className="flex flex-col sm:flex-row gap-4 items-end">
+          <div className="flex-1 min-w-0">
+            <label className="block text-sm font-medium mb-1">Search</label>
+            <input
+              type="text"
+              placeholder="School name or location..."
+              value={filters.q}
+              onChange={(e) => setFilters({...filters, q: e.target.value})}
+              onKeyPress={handleKeyPress}
+              className="w-full border border-input rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
 
-        {/* Level Filter */}
-        <div className="w-32">
-          <label className="block text-sm font-medium mb-1">Level</label>
-          <select
-            value={filters.level}
-            onChange={(e) => setFilters({...filters, level: e.target.value})}
-            className="w-full border border-input rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
-          >
-            <option value="">All Levels</option>
-            <option value="PRIMARY">Primary</option>
-            <option value="SECONDARY">Secondary</option>
-            <option value="MIXED LEVELS">Mixed</option>
-          </select>
-        </div>
+          <div className="w-32">
+            <label className="block text-sm font-medium mb-1">Level</label>
+            <select
+              value={filters.level}
+              onChange={(e) => setFilters({...filters, level: e.target.value})}
+              className="w-full border border-input rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
+            >
+              <option value="">All Levels</option>
+              <option value="PRIMARY">Primary</option>
+              <option value="SECONDARY">Secondary</option>
+              <option value="MIXED LEVELS">Mixed</option>
+            </select>
+          </div>
 
-        {/* Zone Filter */}
-        <div className="w-32">
-          <label className="block text-sm font-medium mb-1">Zone</label>
-          <select
-            value={filters.zone}
-            onChange={(e) => setFilters({...filters, zone: e.target.value})}
-            className="w-full border border-input rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
-          >
-            <option value="">All Zones</option>
-            <option value="NORTH">North</option>
-            <option value="SOUTH">South</option>
-            <option value="EAST">East</option>
-            <option value="WEST">West</option>
-            <option value="CENTRAL">Central</option>
-          </select>
-        </div>
+          <div className="w-32">
+            <label className="block text-sm font-medium mb-1">Zone</label>
+            <select
+              value={filters.zone}
+              onChange={(e) => setFilters({...filters, zone: e.target.value})}
+              className="w-full border border-input rounded-lg px-3 py-2 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none"
+            >
+              <option value="">All Zones</option>
+              <option value="NORTH">North</option>
+              <option value="SOUTH">South</option>
+              <option value="EAST">East</option>
+              <option value="WEST">West</option>
+              <option value="CENTRAL">Central</option>
+            </select>
+          </div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          <button
-            onClick={handleSearch}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors"
-          >
-            Search
-          </button>
-          <button
-            onClick={handleClear}
-            className="border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2 rounded-lg text-sm whitespace-nowrap transition-colors"
-          >
-            Clear
-          </button>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => handleSearch(1)}
+            >
+              Search
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleClear}
+            >
+              Clear
+            </Button>
+          </div>
         </div>
+      </Card>
+
+      <div className="text-sm text-muted-foreground">
+        {loading ? "Loading..." : `Showing ${items.length} schools on page ${page} of ${totalPages}`}
       </div>
-    </div>
 
-      {/* Search Results */}
       <div>
         {loading ? (
           <div className="text-center py-8">Loading schools...</div>
-        ) : searchResults.length > 0 ? (
+        ) : items.length > 0 ? (
           <div className="grid gap-4">
-            {searchResults.map((school: any, index: number) => (
-              <div 
+            {items.map((school: any, index: number) => (
+              <Card 
                 key={index} 
-                className="bg-card border rounded-lg p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50 hover:bg-gray-50"
+                className="p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50"
                 onClick={() => onViewDetails(school.school_name)}
               >
                 <h3 className="font-semibold text-lg">{school.school_name}</h3>
@@ -151,28 +224,50 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
                 
                 <div className="flex gap-2 mt-3">
                   {school.mainlevel_code && (
-                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                    <Badge variant="secondary">
                       {school.mainlevel_code}
-                    </span>
+                    </Badge>
                   )}
                   {school.zone_code && (
-                    <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                    <Badge variant="outline">
                       {school.zone_code}
-                    </span>
+                    </Badge>
                   )}
                 </div>
-              </div>
-          ))}
+              </Card>
+            ))}
           </div>
         ) : (
-          <div className="text-center py-12 bg-card rounded-lg border">
+          <Card className="text-center py-12">
             <div className="text-muted-foreground space-y-2">
               <p>No schools found matching your criteria</p>
               <p className="text-sm">Try adjusting your filters or search terms</p>
             </div>
-          </div>
+          </Card>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-2 mt-6 flex-wrap">
+          <Button 
+            variant="outline" 
+            disabled={page === 1} 
+            onClick={() => handlePageChange(page - 1)}
+          >
+            Previous
+          </Button>
+          
+          {renderPageButtons()}
+          
+          <Button 
+            variant="outline" 
+            disabled={page === totalPages} 
+            onClick={() => handlePageChange(page + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

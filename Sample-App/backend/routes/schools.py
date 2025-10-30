@@ -13,12 +13,23 @@ school_bp = Blueprint("schools", __name__, url_prefix="/api/schools")
 def _normalize_level(lv: str | None) -> str | None:
     if not lv: 
         return None
+    
+    original_lv = lv
     lv = lv.strip().lower()
-    if lv in ("primary","pri","p","ps"):
-        return "PRIMARY"
-    if lv in ("secondary","sec","s"):
-        return "SECONDARY"
-    return lv.upper()
+    
+    result = None
+    if lv in ("primary","pri","p","ps") or "primary" in lv:
+        result = "PRIMARY"
+    elif lv in ("secondary","sec","s") or "secondary" in lv:
+        result = "SECONDARY"
+    elif lv in ("mixed","mix") or "mixed" in lv:
+        result = "MIXED"
+    elif "junior college" in lv or "jc" in lv:
+        result = "JUNIOR COLLEGE"
+    else:
+        result = lv.upper()
+    
+    return result
 
 def _alpha_name(s: dict) -> str:
     return (s.get("school_name") or "").strip().lower()
@@ -35,6 +46,35 @@ def _haversine(lat1, lon1, lat2, lon2):
     c = 2*atan2(sqrt(a), sqrt(1-a))
     return R*c
 
+# @school_bp.get("/", strict_slashes=False)
+# def search():
+#     q = (request.args.get("q") or "").strip().lower()
+#     level = _normalize_level(request.args.get("level"))
+#     zone = (request.args.get("zone") or "").strip().upper()
+#     type_code = (request.args.get("type") or "").strip().upper()
+#     limit = int(request.args.get("limit") or 20)
+#     offset = int(request.args.get("offset") or 0)
+
+#     items = get_schools()
+#     def ok(s):
+#         if q and q not in (s.get("school_name") or "").lower():
+#             return False
+#         if level and s.get("mainlevel_code") != level:
+#             return False
+#         if zone and s.get("zone_code") != zone:
+#             return False
+#         if type_code and s.get("type_code") != type_code:
+#             return False
+#         return True
+
+#     filtered = [s for s in items if ok(s)]
+#     total = len(filtered)
+#     sliced = filtered[offset:offset+limit]
+#     return {"items": sliced, "total": total, "limit": limit, "offset": offset, "total_pages": (total+limit-1)//limit}
+
+
+
+## For Debugging
 @school_bp.get("/", strict_slashes=False)
 def search():
     q = (request.args.get("q") or "").strip().lower()
@@ -45,11 +85,22 @@ def search():
     offset = int(request.args.get("offset") or 0)
 
     items = get_schools()
+
+    all_levels = {}
+    for school in items:
+        school_level = school.get("mainlevel_code")
+        if school_level:
+            all_levels[school_level] = all_levels.get(school_level, 0) + 1
+    
     def ok(s):
         if q and q not in (s.get("school_name") or "").lower():
             return False
-        if level and s.get("mainlevel_code") != level:
-            return False
+        
+        if level:
+            school_level = s.get("mainlevel_code") or ""
+            if level not in school_level.upper():
+                return False
+        
         if zone and s.get("zone_code") != zone:
             return False
         if type_code and s.get("type_code") != type_code:
@@ -59,6 +110,8 @@ def search():
     filtered = [s for s in items if ok(s)]
     total = len(filtered)
     sliced = filtered[offset:offset+limit]
+    
+    
     return {"items": sliced, "total": total, "limit": limit, "offset": offset, "total_pages": (total+limit-1)//limit}
 
 @school_bp.get("/details")

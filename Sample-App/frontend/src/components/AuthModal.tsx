@@ -35,6 +35,10 @@ export const AuthModal: React.FC<Props> = ({ onClose, onAuthed }) => {
     }
   };
 
+  const handleGoogleLogin = () => {
+    window.location.href = 'http://localhost:5000/api/auth/login/google';
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <Card className="p-4 w-full max-w-md bg-white rounded-xl">
@@ -62,6 +66,7 @@ export const AuthModal: React.FC<Props> = ({ onClose, onAuthed }) => {
           <Button variant="outline" onClick={()=>setMode(mode==="login"?"signup":"login")}>
             {mode === "login" ? "Create account" : "I have an account"}
           </Button>
+          <Button onClick={handleGoogleLogin}>Login in with Google</Button>
         </div>
       </Card>
     </div>
