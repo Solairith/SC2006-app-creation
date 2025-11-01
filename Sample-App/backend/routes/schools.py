@@ -63,9 +63,8 @@ def _is_sg_postal(postal: str) -> bool:
 
 def _geocode_postal(postal: str) -> tuple[Optional[float], Optional[float]]:
     """
-    Geocode a **Singapore postal code** using OneMap's Search (elastic) API.
-    Requires a valid OneMap token (Authorization header).
-    Returns (lat, lon) or (None, None) if not found.
+    Geocode a Singapore postal code using OneMap's elastic search API.
+    Returns (lat, lon) or (None, None) if not found or invalid token.
     """
     if not postal:
         return (None, None)
@@ -73,33 +72,46 @@ def _geocode_postal(postal: str) -> tuple[Optional[float], Optional[float]]:
     if len(p) != 6 or not p.isdigit():
         return (None, None)
 
-    # cache hit?
+    # ✅ Cache check
     now = time.time()
     cached = _POSTAL_CACHE.get(p)
     if cached and (now - cached.get("ts", 0) < _POSTAL_TTL_SEC):
         return (cached["lat"], cached["lon"])
 
+    # ✅ Correct OneMap endpoint (NOT developers.onemap.sg)
+    url = (
+        "https://www.onemap.gov.sg/api/common/elastic/search?"
+        + urlencode({
+            "searchVal": p,
+            "returnGeom": "Y",
+            "getAddrDetails": "Y",
+            "pageNum": 1
+        })
+    )
+
+    headers = {"Authorization": os.environ.get("ONEMAP_TOKEN", "").strip()}
     try:
-        url = (
-            "https://www.onemap.gov.sg/api/common/elastic/search?"
-            + urlencode({"searchVal": p, "returnGeom": "Y", "getAddrDetails": "Y", "pageNum": 1})
-        )
-        headers = {"Authorization": f"Bearer {ONEMAP_TOKEN}"} if ONEMAP_TOKEN else {}
         r = requests.get(url, headers=headers, timeout=10)
-        if r.ok:
-            js = r.json()
-            results = js.get("results") or []
-            if results:
-                lat = results[0].get("LATITUDE")
-                lon = results[0].get("LONGITUDE")
-                if lat and lon:
-                    latf, lonf = float(lat), float(lon)
-                    _POSTAL_CACHE[p] = {"lat": latf, "lon": lonf, "ts": now}
-                    return (latf, lonf)
+        js = r.json()
+
+        # ⚠️ Handle expired/invalid tokens gracefully
+        if "error" in js:
+            print(f"[geocode] OneMap token error: {js['error']}")
+            return (None, None)
+
+        results = js.get("results") or []
+        if results:
+            lat = results[0].get("LATITUDE")
+            lon = results[0].get("LONGITUDE")
+            if lat and lon:
+                latf, lonf = float(lat), float(lon)
+                _POSTAL_CACHE[p] = {"lat": latf, "lon": lonf, "ts": now}
+                return (latf, lonf)
+
     except Exception as e:
         print(f"[geocode] OneMap postal error: {e}")
 
-    # cache negative to avoid spamming API
+    # Cache negative results for stability
     _POSTAL_CACHE[p] = {"lat": None, "lon": None, "ts": now}
     return (None, None)
 
