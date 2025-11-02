@@ -66,7 +66,7 @@ export const AuthModal: React.FC<Props> = ({ onClose, onAuthed }) => {
           <Button variant="outline" onClick={()=>setMode(mode==="login"?"signup":"login")}>
             {mode === "login" ? "Create account" : "I have an account"}
           </Button>
-          <Button onClick={handleGoogleLogin}>Login in with Google</Button>
+          <Button onClick={handleGoogleLogin}>Login with Google</Button>
         </div>
       </Card>
     </div>

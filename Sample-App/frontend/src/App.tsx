@@ -76,10 +76,26 @@ const onAuth = async (user: any) => {
   }
 };
 
+// useEffect(() => {
+//   if (user) {
+//     checkUserPreferences();
+//   }
+// }, [user]);
 useEffect(() => {
-  if (user) {
-    checkUserPreferences();
-  }
+  const checkAndRedirect = async () => {
+    if (user) {
+      const hasPrefs = await checkUserPreferences();
+      
+      if (!hasPrefs) {
+        console.log('New user detected, redirecting to profile');
+        setIsNewUser(true);
+        setShowPreferencesForm(true);
+        setCurrentView("profile");
+      }
+    }
+  };
+  
+  checkAndRedirect();
 }, [user]);
 
     const checkUserPreferences = async (): Promise<boolean> => {
@@ -104,7 +120,18 @@ useEffect(() => {
       }
     };
     
-   useEffect(() => { refresh(); }, []);
+   //useEffect(() => { refresh(); }, []);
+   useEffect(() => {
+  const checkPath = async () => {
+    if (window.location.pathname === '/dashboard') {
+      await refresh();  // Fetch user with session cookie
+      window.history.replaceState({}, '', '/');  // Clean up URL
+    } else {
+      refresh();
+    }
+  };
+  checkPath();
+}, []);
 
  useEffect(() => {
     const handlePreferencesSaved = () => {
