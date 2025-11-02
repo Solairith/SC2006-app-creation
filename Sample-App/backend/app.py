@@ -14,6 +14,21 @@ load_dotenv()
 def create_app():
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev-secret-change-me")
+
+    # Flask-Session configuration
+    app.config["SESSION_TYPE"] = "filesystem"
+    app.config["SESSION_PERMANENT"] = False
+    app.config["SESSION_USE_SIGNER"] = True
+    
+    # Session cookie configuration - FIXED
+    app.config["SESSION_COOKIE_DOMAIN"] = None  # ✅ Changed from "127.0.0.1"
+    app.config["SESSION_COOKIE_PATH"] = "/"
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"  # ✅ Changed from None
+    app.config["SESSION_COOKIE_SECURE"] = False
+    #app.config["SESSION_COOKIE_HTTPONLY"] = True  # ✅ Changed from False
+    
+    # Initialize Flask-Session
+    Session(app)
     
     # Allow local Vite dev server with cookies
     CORS(
