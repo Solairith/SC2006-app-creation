@@ -47,7 +47,8 @@ def init_oauth(app):
 @user_bp.route("/auth/login/google")
 def login_google():
     """Redirect user to Google login page"""
-    redirect_uri = url_for("users.auth_google", _external=True)
+    redirect_uri = "http://localhost:5000/api/auth/callback/google"
+    print(f"🔍 DEBUG: Generated redirect_uri = {redirect_uri}")
     return oauth.google.authorize_redirect(redirect_uri)
 
 
