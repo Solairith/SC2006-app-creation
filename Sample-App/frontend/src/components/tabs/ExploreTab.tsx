@@ -53,21 +53,15 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
   if (savedFilters) {
     try { setFilters(JSON.parse(savedFilters)); } catch {}
   }
-  // Use saved page if available; otherwise current page
   handleSearch(savedPage || page);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
 }, []);
 
-// whenever pageSize changes later, reload current page (not 1)
-
-// restore scroll after items load (add this effect)
 useEffect(() => {
   if (!loading && items.length > 0) {
     const y = Number(sessionStorage.getItem(SS_KEYS.scroll) || "0");
     if (y > 0) {
-      // allow layout to paint before scrolling
       setTimeout(() => window.scrollTo({ top: y, behavior: "instant" as ScrollBehavior }), 0);
-      // clear after restoring once
       sessionStorage.removeItem(SS_KEYS.scroll);
     }
   }
@@ -120,13 +114,11 @@ useEffect(() => {
     }
   }
 
-  // Handle page size change
   const handlePageSizeChange = (newPageSize: number) => {
     setPageSize(newPageSize)
     // handleSearch(1) will be triggered by the useEffect
   }
 
-  // Handle page navigation
   const handlePageChange = (newPage: number) => {
     handleSearch(newPage)
   }

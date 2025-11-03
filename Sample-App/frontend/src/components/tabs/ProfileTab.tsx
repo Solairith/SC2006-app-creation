@@ -69,7 +69,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
      currentPreferences.max_distance_km)
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="w-full space-y-6">
       {/* User Information Card */}
       <div className="bg-card rounded-lg border p-6">
         <div className="flex justify-between items-start">
@@ -117,7 +117,7 @@ export const ProfileTab: React.FC<ProfileTabProps> = ({
         </div>
       ) : hasPreferences ? (
         // Show current preferences when they exist
-        <div className="bg-card rounded-lg border p-6">
+        <div className="bg-card rounded-lg border p-6 w-full">
           <h3 className="text-xl font-bold mb-4">Your Preferences</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
