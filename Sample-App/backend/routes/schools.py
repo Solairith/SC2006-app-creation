@@ -20,11 +20,13 @@ ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXV
 _POSTAL_CACHE: dict[str, dict] = {}   # { "200640": {"lat": 1.30..., "lon": 103.85..., "ts": 1690000000} }
 _POSTAL_TTL_SEC = 24 * 3600           # cache for a day
 
-
 def _normalize_level(lv: str | None) -> str | None:
     if not lv: 
         return None
+    
+    original_lv = lv
     lv = lv.strip().lower()
+    
     result = None
     if lv in ("primary","pri","p","ps") or "primary" in lv:
         result = "PRIMARY"
@@ -36,7 +38,9 @@ def _normalize_level(lv: str | None) -> str | None:
         result = "JUNIOR COLLEGE"
     else:
         result = lv.upper()
+    
     return result
+
 def _alpha_name(s: dict) -> str:
     return (s.get("school_name") or "").strip().lower()
 
@@ -143,18 +147,22 @@ def search():
     offset = int(request.args.get("offset") or 0)
 
     items = get_schools()
+
     all_levels = {}
     for school in items:
         school_level = school.get("mainlevel_code")
         if school_level:
             all_levels[school_level] = all_levels.get(school_level, 0) + 1
+    
     def ok(s):
         if q and q not in (s.get("school_name") or "").lower():
             return False
+        
         if level:
             school_level = s.get("mainlevel_code") or ""
             if level not in school_level.upper():
                 return False
+        
         if zone and s.get("zone_code") != zone:
             return False
         if type_code and s.get("type_code") != type_code:
@@ -164,6 +172,8 @@ def search():
     filtered = [s for s in items if ok(s)]
     total = len(filtered)
     sliced = filtered[offset:offset+limit]
+    
+    
     return {"items": sliced, "total": total, "limit": limit, "offset": offset, "total_pages": (total+limit-1)//limit}
 
 @school_bp.get("/details")
