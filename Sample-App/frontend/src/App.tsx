@@ -26,6 +26,9 @@ export default function App() {
   const [userHasPreferences, setUserHasPreferences] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false); 
   const [showPreferencesForm, setShowPreferencesForm] = useState(false);
+
+  const [returnView, setReturnView] = useState<typeof currentView | null>(null);
+
   // ADD nav function
   const nav = (view: typeof currentView) => {
     setCurrentView(view);
@@ -41,6 +44,7 @@ export default function App() {
 
   // ADD handleViewSchoolDetails function
   const handleViewSchoolDetails = (schoolName: string) => {
+    setReturnView(currentView);
     setSelectedSchool(schoolName);
     setCurrentView("schoolDetails");
   };
@@ -48,7 +52,8 @@ export default function App() {
   // ADD handleBackFromDetails function
   const handleBackFromDetails = () => {
     setSelectedSchool(null);
-    setCurrentView("explore");
+    setCurrentView(returnView ?? "explore");
+    setReturnView(null);
   };
 
   const refresh = async () => {
@@ -61,7 +66,6 @@ export default function App() {
   }; 
   
 
- 
 const onAuth = async (user: any) => {
   setUser(user);
   setShowAuth(false);

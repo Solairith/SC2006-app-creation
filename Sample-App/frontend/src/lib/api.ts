@@ -143,44 +143,82 @@ export async function getSchoolDetails(name: string) {
   return data.item;
 }
 
-
 export const getRecommendations = async (): Promise<{ items: any[], error?: string }> => {
   try {
-
     const prefsResponse = await fetch('/api/preferences', {
       method: 'GET',
       credentials: 'include',
     });
     
-    let homeAddress = '';
-    if (prefsResponse.ok) {
-      const prefsData = await prefsResponse.json();
-      homeAddress = prefsData.home_address || '';
+    if (!prefsResponse.ok) {
+      throw new Error('Failed to fetch user preferences');
     }
-
-    // Call recommendations with home address
-    const url = homeAddress 
-      ? `/api/schools/recommend?home_address=${encodeURIComponent(homeAddress)}`
-      : '/api/schools/recommend';
     
+    const prefsData = await prefsResponse.json();
+
+
+    // Use home_postal consistently (backend expects this)
+    const homePostal = prefsData.home_postal || prefsData.home_address;
+    const maxDistance = prefsData.max_distance_km;
+    const level = prefsData.level;
+    const subjects = prefsData.subjects || [];
+    const ccas = prefsData.ccas || [];
+
+    // Build query parameters for GET request (like your working URL)
+    const params = new URLSearchParams();
+    
+    if (homePostal) params.append('home_postal', homePostal);
+    if (maxDistance) params.append('travel_km', maxDistance.toString());
+    if (level) params.append('level', level);
+    if (subjects.length > 0) params.append('subjects', subjects.join(','));
+    if (ccas.length > 0) params.append('ccas', ccas.join(','));
+
+    const url = `/api/schools/recommend?${params.toString()}`;
+   
+
+    // Use GET request as your backend expects (like your working example)
     const response = await fetch(url, {
       method: 'GET',
       credentials: 'include',
     });
+
     
+
     if (!response.ok) {
-      const error = await response.json();
-      return { items: [], error: error.error || 'Failed to get recommendations' };
+      let errorMessage = 'Failed to get recommendations';
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (e) {
+        // If response isn't JSON, use status text
+        errorMessage = `${response.status} ${response.statusText}`;
+      }
+      console.error('Recommendation API error:', errorMessage);
+      return { items: [], error: errorMessage };
     }
-    
+
     const data = await response.json();
+    console.log('Recommendation response received:', {
+      itemCount: data.items?.length,
+      homePostalUsed: data.home_postal_used,
+      userCoords: data.user_coords,
+      firstItem: data.items?.[0] ? {
+        name: data.items[0].school_name,
+        distance: data.items[0].distance_km,
+        score: data.items[0].score_percent
+      } : null
+    });
+
+    // Return ALL items without filtering
     return {
-      items: ((data.items ?? []) as Array<{ score_percent?: number }>).filter(
-        (i) => Number(i.score_percent ?? 0) > 0
-      ),
+      items: data.items || [],
     };
     
   } catch (error: any) {
-    return { items: [], error: error.message || 'Failed to get recommendations' };
+    console.error('Error in getRecommendations:', error);
+    return { 
+      items: [], 
+      error: error.message || 'Failed to get recommendations' 
+    };
   }
 };

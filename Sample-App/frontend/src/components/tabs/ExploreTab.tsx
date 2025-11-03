@@ -4,6 +4,8 @@ import { searchSchools, type School } from '../../lib/api'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { Card } from '../ui/card'
+import { useSavedSchools } from '../context/SavedSchoolsContext'
+import { HeartToggle } from '../HeartToggle'
 
 interface ExploreTabProps {
   user: any
@@ -29,6 +31,7 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
     level: '',
     zone: '',
   })
+  const {savedSchools, addSchool, removeSchool} = useSavedSchools()
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
@@ -213,29 +216,41 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
           <div className="text-center py-8">Loading schools...</div>
         ) : items.length > 0 ? (
           <div className="grid gap-4">
-            {items.map((school: any, index: number) => (
-              <Card 
-                key={index} 
-                className="p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50"
-                onClick={() => onViewDetails(school.school_name)}
-              >
-                <h3 className="font-semibold text-lg">{school.school_name}</h3>
-                <p className="text-muted-foreground text-sm mt-1">{school.address}</p>
-                
-                <div className="flex gap-2 mt-3">
-                  {school.mainlevel_code && (
-                    <Badge variant="secondary">
-                      {school.mainlevel_code}
-                    </Badge>
-                  )}
-                  {school.zone_code && (
-                    <Badge variant="outline">
-                      {school.zone_code}
-                    </Badge>
-                  )}
-                </div>
-              </Card>
-            ))}
+            {items.map((school: any, index: number) => {
+              const name = school.school_name;
+              const isSaved = savedSchools.some(s => s.school_name === name);
+              return (
+                <Card
+                  key={index}
+                  className="p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50 relative"
+                  onClick={() => onViewDetails(name)}
+                >
+                  {/* heart in the corner */}
+                  <div className="absolute top-2 right-2">
+                    <HeartToggle
+                      saved={isSaved}
+                      onToggle={() =>
+                        isSaved
+                          ? removeSchool(name)
+                          : addSchool({
+                              school_name: name,
+                              address: school.address,
+                              mainlevel_code: school.mainlevel_code,
+                            })
+                      }
+                    />
+                  </div>
+
+                  <h3 className="font-semibold text-lg">{name}</h3>
+                  <p className="text-muted-foreground text-sm mt-1">{school.address}</p>
+
+                  <div className="flex gap-2 mt-3">
+                    {school.mainlevel_code && <Badge variant="secondary">{school.mainlevel_code}</Badge>}
+                    {school.zone_code && <Badge variant="outline">{school.zone_code}</Badge>}
+                  </div>
+                </Card>
+              );
+            })}
           </div>
         ) : (
           <Card className="text-center py-12">

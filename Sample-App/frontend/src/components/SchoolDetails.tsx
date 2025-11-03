@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { getSchoolDetails, type School } from "../lib/api";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
+import { HeartToggle } from "./HeartToggle";``
 import { Badge } from "./ui/badge";
 import { useSavedSchools } from "./context/SavedSchoolsContext"; // ✅ import context
 
@@ -42,7 +43,7 @@ export const SchoolDetails: React.FC<{
   if (error) return <Card className="p-6 text-red-600">{error}</Card>;
   if (!school) return <Card className="p-6">School not found.</Card>;
 
-  const name = school.school_name || school.name || "School";
+  const name = school.school_name || "School";
   const level = school.mainlevel_code || "";
   const zone = school.zone_code || "";
   const type = school.type_code || "";
@@ -61,25 +62,14 @@ export const SchoolDetails: React.FC<{
           <Button onClick={onBack} variant="outline">
             Back
           </Button>
-
-          {/* ✅ Save / Remove Button */}
-          {isSaved ? (
-            <Button variant="destructive" onClick={() => removeSchool(name)}>
-              Remove from Saved
-            </Button>
-          ) : (
-            <Button
-              onClick={() =>
-                addSchool({
-                  school_name: name,
-                  address: addr,
-                  mainlevel_code: level,
-                })
-              }
-            >
-              Save School
-            </Button>
-          )}
+          <HeartToggle
+          saved={isSaved}
+          onToggle={() =>
+            isSaved
+              ? removeSchool(name)
+              : addSchool({ school_name: name, address: addr, mainlevel_code: level })
+          }
+        />
         </div>
       </div>
 

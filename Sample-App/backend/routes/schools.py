@@ -25,12 +25,18 @@ def _normalize_level(lv: str | None) -> str | None:
     if not lv: 
         return None
     lv = lv.strip().lower()
-    if lv in ("primary","pri","p","ps"):
-        return "PRIMARY"
-    if lv in ("secondary","sec","s"):
-        return "SECONDARY"
-    return lv.upper()
-
+    result = None
+    if lv in ("primary","pri","p","ps") or "primary" in lv:
+        result = "PRIMARY"
+    elif lv in ("secondary","sec","s") or "secondary" in lv:
+        result = "SECONDARY"
+    elif lv in ("mixed","mix") or "mixed" in lv:
+        result = "MIXED"
+    elif "junior college" in lv or "jc" in lv:
+        result = "JUNIOR COLLEGE"
+    else:
+        result = lv.upper()
+    return result
 def _alpha_name(s: dict) -> str:
     return (s.get("school_name") or "").strip().lower()
 
@@ -89,7 +95,7 @@ def _geocode_postal(postal: str) -> tuple[Optional[float], Optional[float]]:
         })
     )
 
-    headers = {"Authorization": os.environ.get("ONEMAP_TOKEN", "").strip()}
+    headers = {"Authorization": ONEMAP_TOKEN}
     try:
         r = requests.get(url, headers=headers, timeout=10)
         js = r.json()
@@ -137,11 +143,18 @@ def search():
     offset = int(request.args.get("offset") or 0)
 
     items = get_schools()
+    all_levels = {}
+    for school in items:
+        school_level = school.get("mainlevel_code")
+        if school_level:
+            all_levels[school_level] = all_levels.get(school_level, 0) + 1
     def ok(s):
         if q and q not in (s.get("school_name") or "").lower():
             return False
-        if level and s.get("mainlevel_code") != level:
-            return False
+        if level:
+            school_level = s.get("mainlevel_code") or ""
+            if level not in school_level.upper():
+                return False
         if zone and s.get("zone_code") != zone:
             return False
         if type_code and s.get("type_code") != type_code:
@@ -173,7 +186,7 @@ def _score_school(school: dict, prefs: dict, weights: dict, user_lat=None, user_
     details = get_school_details(school["school_name"]) or {}
     school_ccas     = set(map(str.lower, details.get("ccas", [])))
     school_subjects = set(map(str.lower, details.get("subjects", [])))
-    school_level    = (school.get("mainlevel_code") or "").upper()
+    school_level    = _normalize_level(school.get("mainlevel_code"))
 
     # 2) distances: geocode school postal → coords
     distance_km = None
@@ -221,7 +234,7 @@ def recommend():
     subjects    = data.get("subjects")    or request.args.get("subjects") or []
     ccas        = data.get("ccas")        or request.args.get("ccas")     or []
     travel_km   = data.get("travel_km")   or request.args.get("travel_km")
-    home_postal = (data.get("home_postal") or request.args.get("home_postal") or "").strip()
+    home_postal = (data.get("home_postal") or request.args.get("home_postal") or data.get("home_address") or request.args.get("home_address") or "").strip()
 
     # allow comma string for GET
     if isinstance(subjects, str):
@@ -334,4 +347,27 @@ def recommend_debug():
         },
         "calculated_distance_km": d_km,
         "prefs": prefs
+    }
+
+@school_bp.get("/debug-distance")
+def debug_distance():
+    home_postal = (request.args.get("home_postal") or
+                   request.args.get("home_address") or "").strip()
+    school_postal = request.args.get("school_postal", "").strip()
+    if not home_postal or not school_postal:
+        return {"error": "Both home_postal and school_postal required"}, 400
+
+    
+    # Test geocoding for both
+    home_lat, home_lon = _geocode_postal(home_postal)
+    school_lat, school_lon = _geocode_postal(school_postal)
+    
+    distance = _haversine(home_lat, home_lon, school_lat, school_lon) if all([home_lat, home_lon, school_lat, school_lon]) else None
+    
+    return {
+        "home_postal": home_postal,
+        "school_postal": school_postal,
+        "home_coords": {"lat": home_lat, "lon": home_lon},
+        "school_coords": {"lat": school_lat, "lon": school_lon},
+        "distance_km": distance
     }
