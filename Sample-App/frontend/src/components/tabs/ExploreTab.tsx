@@ -7,6 +7,13 @@ import { Card } from '../ui/card'
 import { useSavedSchools } from '../context/SavedSchoolsContext'
 import { HeartToggle } from '../HeartToggle'
 
+const SS_KEYS = {
+  page: "explore.page",
+  pageSize: "explore.pageSize",
+  filters: "explore.filters",
+  scroll: "explore.scrollY",
+} as const;
+
 interface ExploreTabProps {
   user: any
   onViewDetails: (schoolName: string) => void
@@ -35,10 +42,36 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  // Load schools only on initial mount and when pageSize changes
   useEffect(() => {
-    handleSearch(1)
-  }, [pageSize])
+  // On first mount, try to restore saved state
+  const savedPage = Number(sessionStorage.getItem(SS_KEYS.page) || "0") || 1;
+  const savedPageSize = Number(sessionStorage.getItem(SS_KEYS.pageSize) || "0");
+  const savedFilters = sessionStorage.getItem(SS_KEYS.filters);
+  if (savedPageSize && savedPageSize !== pageSize) {
+    setPageSize(savedPageSize);
+  }
+  if (savedFilters) {
+    try { setFilters(JSON.parse(savedFilters)); } catch {}
+  }
+  // Use saved page if available; otherwise current page
+  handleSearch(savedPage || page);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+// whenever pageSize changes later, reload current page (not 1)
+
+// restore scroll after items load (add this effect)
+useEffect(() => {
+  if (!loading && items.length > 0) {
+    const y = Number(sessionStorage.getItem(SS_KEYS.scroll) || "0");
+    if (y > 0) {
+      // allow layout to paint before scrolling
+      setTimeout(() => window.scrollTo({ top: y, behavior: "instant" as ScrollBehavior }), 0);
+      // clear after restoring once
+      sessionStorage.removeItem(SS_KEYS.scroll);
+    }
+  }
+}, [loading, items]);
 
   const handleSearch = async (newPage = 1) => {
     try {
@@ -58,7 +91,11 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
       const response = await searchSchools(cleanFilters)
       setItems(response.items || [])
       setTotal(response.total || 0)
-      setPage(newPage) // This updates the page state AFTER the search
+      setPage(newPage)
+
+      sessionStorage.setItem(SS_KEYS.page, String(newPage));
+      sessionStorage.setItem(SS_KEYS.pageSize, String(pageSize));
+      sessionStorage.setItem(SS_KEYS.filters, JSON.stringify(filters));
     } catch (error) {
       console.error('Search failed:', error)
       setItems([])
@@ -171,6 +208,7 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
               <option value="">All Levels</option>
               <option value="PRIMARY">Primary</option>
               <option value="SECONDARY">Secondary</option>
+              <option value="Junior College">Junior College</option>
               <option value="MIXED LEVELS">Mixed</option>
             </select>
           </div>
@@ -223,7 +261,11 @@ export const ExploreTab: React.FC<ExploreTabProps> = ({ user, onViewDetails }) =
                 <Card
                   key={index}
                   className="p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50 relative"
-                  onClick={() => onViewDetails(name)}
+                  onClick={() => {
+                    sessionStorage.setItem(SS_KEYS.scroll, String(window.scrollY));
+                    onViewDetails(name)
+                }
+                }
                 >
                   {/* heart in the corner */}
                   <div className="absolute top-2 right-2">

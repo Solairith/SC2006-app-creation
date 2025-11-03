@@ -100,6 +100,7 @@ def _geocode_postal(postal: str) -> tuple[Optional[float], Optional[float]]:
     )
 
     headers = {"Authorization": ONEMAP_TOKEN}
+   # headers = {"Authorization": os.environ.get("ONEMAP_TOKEN", "").strip()}
     try:
         r = requests.get(url, headers=headers, timeout=10)
         js = r.json()
