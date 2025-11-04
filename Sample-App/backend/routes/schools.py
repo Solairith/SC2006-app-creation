@@ -14,8 +14,7 @@ import os
 school_bp = Blueprint("schools", __name__, url_prefix="/api/schools")
 
 # 🔐 OneMap token (recommended: set env var ONEMAP_TOKEN)
-
-GOOGLE_MAPS_KEY = os.environ.get("GOOGLE_MAPS_KEY", "AIzaSyCskEcDqLzho7eaZ7YjRWXDQb_ZY1l-mH4")
+ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo5ODQ2LCJmb3JldmVyIjpmYWxzZSwiaXNzIjoiT25lTWFwIiwiaWF0IjoxNzYxOTc2OTU4LCJuYmYiOjE3NjE5NzY5NTgsImV4cCI6MTc2MjIzNjE1OCwianRpIjoiMDZjM2I1MzEtNDBkNy00YjZlLWEwOWEtMzFhYzY5MTU5Y2I1In0.3UkMJvO5HweZewN5OSZdBnjZfO9v3TNnRiVNtZJglbUJHMbCmm508GDWD9ui5GFducALjlEAC9g3zlXcJ2x285E7W0_stDQ7b3HiZBeWcFHephBwC7JUexfJOEwm_KXmOZyk776O7eFgCZg2D7PRwPd2_-tRsB6lGrhq5HFDK-SpbH9pGBaXjWLIswsGqB2qxq6o6XupqwTaGcgByssrnk2LFaysTd9uAHQ-_nB0QyCS7A1SlM4P2dF8skPS1WrSkyjndARCeh9jsBUTmgnRAOPJ1OHrZtsP0iKXnY3hAs_GM4VR1Md662umaLmttCqwLF_N-DxvKevb0DPUAZVflQ")
 
 # 🔁 in-memory cache for postal → (lat, lon)
 _POSTAL_CACHE: dict[str, dict] = {}   # { "200640": {"lat": 1.30..., "lon": 103.85..., "ts": 1690000000} }
@@ -72,22 +71,59 @@ def _cache_put(postal: str, lat: float, lon: float) -> None:
 def _is_sg_postal(postal: str) -> bool:
     return isinstance(postal, str) and len(postal.strip()) == 6 and postal.strip().isdigit()
 
-def _geocode_postal(postal: str):
-    """Get lat/lon from a postal code using Google Maps API."""
-    if not postal or not str(postal).strip():
+def _geocode_postal(postal: str) -> tuple[Optional[float], Optional[float]]:
+    """
+    Geocode a Singapore postal code using OneMap's elastic search API.
+    Returns (lat, lon) or (None, None) if not found or invalid token.
+    """
+    if not postal:
+        return (None, None)
+    p = str(postal).strip()
+    if len(p) != 6 or not p.isdigit():
         return (None, None)
 
+    # ✅ Cache check
+    now = time.time()
+    cached = _POSTAL_CACHE.get(p)
+    if cached and (now - cached.get("ts", 0) < _POSTAL_TTL_SEC):
+        return (cached["lat"], cached["lon"])
+
+    # ✅ Correct OneMap endpoint (NOT developers.onemap.sg)
+    url = (
+        "https://www.onemap.gov.sg/api/common/elastic/search?"
+        + urlencode({
+            "searchVal": p,
+            "returnGeom": "Y",
+            "getAddrDetails": "Y",
+            "pageNum": 1
+        })
+    )
+
+    headers = {"Authorization": ONEMAP_TOKEN}
+   # headers = {"Authorization": os.environ.get("ONEMAP_TOKEN", "").strip()}
     try:
-        url = "https://maps.googleapis.com/maps/api/geocode/json"
-        params = {"address": f"Singapore {postal}", "key": GOOGLE_MAPS_KEY}
-        r = requests.get(url, params=params, timeout=10)
-        if r.ok:
-            js = r.json()
-            if js.get("results"):
-                loc = js["results"][0]["geometry"]["location"]
-                return loc["lat"], loc["lng"]
+        r = requests.get(url, headers=headers, timeout=10)
+        js = r.json()
+
+        # ⚠️ Handle expired/invalid tokens gracefully
+        if "error" in js:
+            print(f"[geocode] OneMap token error: {js['error']}")
+            return (None, None)
+
+        results = js.get("results") or []
+        if results:
+            lat = results[0].get("LATITUDE")
+            lon = results[0].get("LONGITUDE")
+            if lat and lon:
+                latf, lonf = float(lat), float(lon)
+                _POSTAL_CACHE[p] = {"lat": latf, "lon": lonf, "ts": now}
+                return (latf, lonf)
+
     except Exception as e:
-        print(f"[geocode] Google Maps error: {e}")
+        print(f"[geocode] OneMap postal error: {e}")
+
+    # Cache negative results for stability
+    _POSTAL_CACHE[p] = {"lat": None, "lon": None, "ts": now}
     return (None, None)
 
 
