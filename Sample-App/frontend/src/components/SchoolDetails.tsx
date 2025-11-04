@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { getSchoolDetails, type School } from "../lib/api";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { HeartToggle } from "./HeartToggle";``
 import { Badge } from "./ui/badge";
-import { useSavedSchools } from "./context/SavedSchoolsContext"; // ✅ import context
+import { useSavedSchools } from "./context/SavedSchoolsContext";
 
 interface DetailedSchool extends School {
   ccas?: string[];
@@ -12,7 +11,11 @@ interface DetailedSchool extends School {
   telephone_no?: string;
   email_address?: string;
   url_address?: string;
+  latitude?: number;
+  longitude?: number;
 }
+
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY;
 
 export const SchoolDetails: React.FC<{
   schoolName: string;
@@ -21,7 +24,8 @@ export const SchoolDetails: React.FC<{
   const [school, setSchool] = useState<DetailedSchool | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { addSchool, savedSchools, removeSchool } = useSavedSchools(); // ✅ context hooks
+  const mapRef = useRef<HTMLDivElement>(null);
+  const { addSchool, savedSchools, removeSchool } = useSavedSchools();
 
   useEffect(() => {
     async function load() {
@@ -30,7 +34,7 @@ export const SchoolDetails: React.FC<{
         setError(null);
         const data = await getSchoolDetails(schoolName);
         setSchool(data);
-      } catch (e: any) {
+      } catch {
         setError("Failed to load school details");
       } finally {
         setLoading(false);
@@ -39,16 +43,61 @@ export const SchoolDetails: React.FC<{
     load();
   }, [schoolName]);
 
+  // Load Google Maps API script dynamically
+  useEffect(() => {
+    if (!school || !mapRef.current) return;
+    const scriptId = "google-maps-script";
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement("script");
+      script.id = scriptId;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}`;
+      script.async = true;
+      script.onload = () => initMap();
+      document.body.appendChild(script);
+    } else {
+      initMap();
+    }
+
+    function initMap() {
+      if (!school || !mapRef.current) return;
+      const map = new google.maps.Map(mapRef.current, {
+        zoom: 16,
+        center: { lat: 1.3521, lng: 103.8198 }, // fallback to Singapore center
+      });
+
+      const geocoder = new google.maps.Geocoder();
+
+      // If lat/lon available use them, otherwise geocode address
+      if (school.latitude && school.longitude) {
+        const position = { lat: school.latitude, lng: school.longitude };
+        map.setCenter(position);
+        new google.maps.Marker({ position, map, title: school.school_name });
+      } else if (school.address) {
+        geocoder.geocode({ address: school.address }, (results, status) => {
+          if (status === "OK" && results && results[0]) {
+            map.setCenter(results[0].geometry.location);
+            new google.maps.Marker({
+              map,
+              position: results[0].geometry.location,
+              title: school.school_name,
+            });
+          } else {
+            console.error("Geocode failed:", status);
+          }
+        });
+      }
+    }
+  }, [school]);
+
   if (loading) return <Card className="p-6">Loading…</Card>;
   if (error) return <Card className="p-6 text-red-600">{error}</Card>;
   if (!school) return <Card className="p-6">School not found.</Card>;
 
-  const name = school.school_name || "School";
+  const name = school.school_name || school.name || "School";
   const level = school.mainlevel_code || "";
   const zone = school.zone_code || "";
   const type = school.type_code || "";
   const addr = school.address || "";
-
   const isSaved = savedSchools.some((s) => s.school_name === name);
 
   return (
@@ -62,14 +111,23 @@ export const SchoolDetails: React.FC<{
           <Button onClick={onBack} variant="outline">
             Back
           </Button>
-          <HeartToggle
-          saved={isSaved}
-          onToggle={() =>
-            isSaved
-              ? removeSchool(name)
-              : addSchool({ school_name: name, address: addr, mainlevel_code: level })
-          }
-        />
+          {isSaved ? (
+            <Button variant="destructive" onClick={() => removeSchool(name)}>
+              Remove from Saved
+            </Button>
+          ) : (
+            <Button
+              onClick={() =>
+                addSchool({
+                  school_name: name,
+                  address: addr,
+                  mainlevel_code: level,
+                })
+              }
+            >
+              Save School
+            </Button>
+          )}
         </div>
       </div>
 
@@ -87,17 +145,12 @@ export const SchoolDetails: React.FC<{
         <div className="space-y-2">
           <h3 className="font-semibold text-lg mt-4">Contact Information</h3>
           {school.telephone_no && (
-            <p>
-              📞 <strong>Telephone:</strong> {school.telephone_no}
-            </p>
+            <p>📞 <strong>Telephone:</strong> {school.telephone_no}</p>
           )}
           {school.email_address && (
             <p>
               ✉️ <strong>Email:</strong>{" "}
-              <a
-                href={`mailto:${school.email_address}`}
-                className="text-blue-600 hover:underline"
-              >
+              <a href={`mailto:${school.email_address}`} className="text-blue-600 hover:underline">
                 {school.email_address}
               </a>
             </p>
@@ -105,12 +158,7 @@ export const SchoolDetails: React.FC<{
           {school.url_address && (
             <p>
               🌐 <strong>Website:</strong>{" "}
-              <a
-                href={school.url_address}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-600 hover:underline"
-              >
+              <a href={school.url_address} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                 {school.url_address}
               </a>
             </p>
@@ -118,38 +166,39 @@ export const SchoolDetails: React.FC<{
         </div>
       )}
 
-      {/* Subjects + CCAs side by side */}
+      {/* Subjects + CCAs */}
       {(school.subjects?.length || school.ccas?.length) && (
         <div className="flex flex-col md:flex-row gap-6 mt-6">
-          {/* Subjects */}
-          {school.subjects && school.subjects.length > 0 && (
+          {school.subjects?.length ? (
             <div className="flex-1">
               <h3 className="font-semibold text-lg mb-2">Subjects Offered</h3>
               <div className="flex flex-wrap gap-2">
                 {school.subjects.map((subj, idx) => (
-                  <Badge key={idx} variant="secondary">
-                    {subj}
-                  </Badge>
+                  <Badge key={idx} variant="secondary">{subj}</Badge>
                 ))}
               </div>
             </div>
-          )}
-
-          {/* CCAs */}
-          {school.ccas && school.ccas.length > 0 && (
+          ) : null}
+          {school.ccas?.length ? (
             <div className="flex-1">
               <h3 className="font-semibold text-lg mb-2">
                 Co-Curricular Activities (CCAs)
               </h3>
               <div className="flex flex-wrap gap-2">
                 {school.ccas.map((cca, idx) => (
-                  <Badge key={idx} variant="outline">
-                    {cca}
-                  </Badge>
+                  <Badge key={idx} variant="outline">{cca}</Badge>
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
+        </div>
+      )}
+
+      {/* Google Map */}
+      {addr && (
+        <div className="mt-6">
+          <h3 className="font-semibold text-lg mb-2">Location</h3>
+          <div ref={mapRef} style={{ width: "100%", height: "400px", borderRadius: "12px" }} />
         </div>
       )}
     </Card>
