@@ -15,6 +15,15 @@ interface DetailedSchool extends School {
   postal_code?: string;     // ✅ ensure we can read postal
   latitude?: number;        // optional: if backend supplies coords
   longitude?: number;       // optional: if backend supplies coords
+  cutoff_points?: {
+  "POSTING GROUP 3 (EXPRESS)"?: string;
+  "POSTING GROUP 3 AFFILIATED"?: string;
+  "POSTING GROUP 2 (NORMAL ACAD)"?: string;
+  "POSTING GROUP 2 AFFILIATED"?: string;
+  "POSTING GROUP 1 (NORMAL TECH)"?: string;
+  "POSTING GROUP 1 AFFILIATED"?: string;
+};
+
 }
 
 /** Build OneMap Advanced Mini-Map URL.
@@ -173,6 +182,40 @@ export const SchoolDetails: React.FC<{
           )}
         </div>
       )}
+
+      {/* Cut-off Points Section */}
+      {school.cutoff_points && (
+        <div className="mt-6">
+          <h3 className="font-semibold text-lg mb-2">Cut-off Points (2024)</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-gray-700">
+            <p>
+              <strong>PG3 (Express):</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 3 (EXPRESS)"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG3 Affiliated:</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 3 AFFILIATED"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG2 (Normal Acad):</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 2 (NORMAL ACAD)"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG2 Affiliated:</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 2 AFFILIATED"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG1 (Normal Tech):</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 1 (NORMAL TECH)"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG1 Affiliated:</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 1 AFFILIATED"] ?? "N/A"}
+            </p>
+          </div>
+        </div>
+      )}
+
 
       {/* Subjects + CCAs side by side */}
       {(school.subjects?.length || school.ccas?.length) && (

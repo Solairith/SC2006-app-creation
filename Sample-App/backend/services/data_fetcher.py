@@ -1,5 +1,8 @@
 import requests
 import time
+import pandas as pd
+import os
+import numpy as np
 
 # ------------------------------------------------------------------
 # Hardcoded dataset IDs from the School Directory & Information collection (ID 457)
@@ -17,6 +20,18 @@ _cache = {"items": None, "timestamp": 0, "ttl": 600}  # cache for school list (1
 _detail_cache = {}  # cache per school details
 _dataset_cache = {}  # cache for raw datasets
 
+# ------------------------------------------------------------------
+# Load local cut-off point dataset (Excel)
+# ------------------------------------------------------------------
+try:
+    cop_path = os.path.join(os.path.dirname(__file__), "..", "school_cop.xlsx")
+    cop_path = os.path.abspath(cop_path)
+    cop_df = pd.read_excel(cop_path)
+    cop_df["school_name"] = cop_df["school_name"].str.strip().str.lower()
+    print(f"📘 Loaded {len(cop_df)} rows from school_cop.xlsx")
+except Exception as e:
+    print(f"⚠️ Could not load school_cop.xlsx: {e}")
+    cop_df = pd.DataFrame()
 
 # ------------------------------------------------------------------
 # Fetch dataset from Data.gov.sg (cached)
@@ -57,7 +72,6 @@ def _fetch_dataset(dataset_id: str):
     _dataset_cache[dataset_id] = {"data": all_rows, "timestamp": time.time()}
     return all_rows
 
-
 # ------------------------------------------------------------------
 # Normalize school info dataset
 # ------------------------------------------------------------------
@@ -78,6 +92,50 @@ def _normalize_school_data(rows):
         })
     return normalized
 
+# ------------------------------------------------------------------
+# Cut-off point lookup helper
+# ------------------------------------------------------------------
+def get_cutoff_for_school(school_name: str):
+    """
+    Return cut-off point data for a given school.
+    If the school isn't found or has empty cells, return 'N/A' for all.
+    """
+    default = {
+        "POSTING GROUP 3 (EXPRESS)": "N/A",
+        "POSTING GROUP 3 AFFILIATED": "N/A",
+        "POSTING GROUP 2 (NORMAL ACAD)": "N/A",
+        "POSTING GROUP 2 AFFILIATED": "N/A",
+        "POSTING GROUP 1 (NORMAL TECH)": "N/A",
+        "POSTING GROUP 1 AFFILIATED": "N/A",
+    }
+
+    if cop_df.empty or not school_name:
+        return default
+
+    name = school_name.strip().lower()
+    match = cop_df[cop_df["school_name"] == name]
+    if match.empty:
+        return default
+
+    row = match.iloc[0]
+    result = {}
+    for col in default.keys():
+        val = row.get(col, "N/A")
+
+        if pd.isna(val):
+            result[col] = "N/A"
+        elif isinstance(val, (int, float, np.integer, np.floating)):
+            # If value is a float but represents a whole number (like 14.0), cast to int
+            if float(val).is_integer():
+                result[col] = str(int(val))
+            else:
+                # keep as-is if it has real decimal part (just in case)
+                result[col] = str(round(val, 2))
+        else:
+            result[col] = str(val).strip()
+
+
+    return result
 
 # ------------------------------------------------------------------
 # Main school list (for /api/schools)
@@ -101,15 +159,14 @@ def get_schools(fetch_all=False):
         print("❌ [data_fetcher] Failed to fetch school data:", e)
         return []
 
-
 # ------------------------------------------------------------------
-# Detailed info for one school (info + CCAs + subjects)
+# Detailed info for one school (info + CCAs + subjects + cut-off)
 # ------------------------------------------------------------------
 def get_school_details(school_name: str):
     """
     Get detailed info for one school:
     - From main dataset (school_info)
-    - Enriched with CCAs and subjects (many rows per school)
+    - Enriched with CCAs, subjects, and cut-off points
     """
     key = school_name.strip().upper()
 
@@ -125,7 +182,6 @@ def get_school_details(school_name: str):
         print(f"⚠️ School '{school_name}' not found in main dataset.")
         return None
 
-    # 2️⃣ Load and enrich with CCAs + subjects
     # 2️⃣ Load and enrich with CCAs + subjects
     try:
         ccas = _fetch_dataset(DATASETS["ccas"])
@@ -148,13 +204,14 @@ def get_school_details(school_name: str):
         school["subjects"] = subj_list
 
         print(f"✅ Enriched {school_name} with {len(cca_list)} CCAs and {len(subj_list)} subjects.")
-
     except Exception as e:
         print(f"⚠️ Could not enrich details for '{school_name}': {e}")
         school["ccas"] = []
         school["subjects"] = []
 
+    # 3️⃣ Add cut-off point data
+    school["cutoff_points"] = get_cutoff_for_school(school_name)
 
-    # 3️⃣ Cache and return
+    # 4️⃣ Cache and return
     _detail_cache[key] = {"data": school, "timestamp": time.time()}
     return school
