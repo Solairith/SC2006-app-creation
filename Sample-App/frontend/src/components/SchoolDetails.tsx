@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import { getSchoolDetails, type School } from "../lib/api";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { HeartToggle } from "./HeartToggle";``
+import { HeartToggle } from "./HeartToggle";
 import { Badge } from "./ui/badge";
-import { useSavedSchools } from "./context/SavedSchoolsContext"; // ✅ import context
+import { useSavedSchools } from "./context/SavedSchoolsContext";
 
 interface DetailedSchool extends School {
   ccas?: string[];
@@ -12,6 +12,42 @@ interface DetailedSchool extends School {
   telephone_no?: string;
   email_address?: string;
   url_address?: string;
+  postal_code?: string;     // ✅ ensure we can read postal
+  latitude?: number;        // optional: if backend supplies coords
+  longitude?: number;       // optional: if backend supplies coords
+  cutoff_points?: {
+  "POSTING GROUP 3 (EXPRESS)"?: string;
+  "POSTING GROUP 3 AFFILIATED"?: string;
+  "POSTING GROUP 2 (NORMAL ACAD)"?: string;
+  "POSTING GROUP 2 AFFILIATED"?: string;
+  "POSTING GROUP 1 (NORMAL TECH)"?: string;
+  "POSTING GROUP 1 AFFILIATED"?: string;
+};
+
+}
+
+/** Build OneMap Advanced Mini-Map URL.
+ *  Uses lat/lon when available; falls back to postal code.
+ *  No token required.
+ */
+function buildOneMapMiniMapURL(opts: { postal?: string; lat?: number; lon?: number }) {
+  const base = "https://www.onemap.gov.sg/amm/amm.html";
+  const params = new URLSearchParams({
+    mapStyle: "Default",
+    zoomLevel: "16",
+    popupWidth: "220",
+  });
+
+  if (opts.lat != null && opts.lon != null) {
+    params.set("marker", `latlng:${opts.lat},${opts.lon}!colour:red`);
+  } else if (opts.postal) {
+    // sanitize to digits only (SG postals are 6 digits)
+    const p = String(opts.postal).trim();
+    const six = p.replace(/\D/g, "").slice(0, 6);
+    params.set("marker", `postalcode:${six}!colour:red`);
+  }
+
+  return `${base}?${params.toString()}`;
 }
 
 export const SchoolDetails: React.FC<{
@@ -21,7 +57,7 @@ export const SchoolDetails: React.FC<{
   const [school, setSchool] = useState<DetailedSchool | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { addSchool, savedSchools, removeSchool } = useSavedSchools(); // ✅ context hooks
+  const { addSchool, savedSchools, removeSchool } = useSavedSchools();
 
   useEffect(() => {
     async function load() {
@@ -48,8 +84,12 @@ export const SchoolDetails: React.FC<{
   const zone = school.zone_code || "";
   const type = school.type_code || "";
   const addr = school.address || "";
-
+  const postal = school.postal_code || "";
   const isSaved = savedSchools.some((s) => s.school_name === name);
+
+  const hasMap = Boolean(
+    (school.latitude != null && school.longitude != null) || postal
+  );
 
   return (
     <Card className="p-6 space-y-6">
@@ -63,13 +103,13 @@ export const SchoolDetails: React.FC<{
             Back
           </Button>
           <HeartToggle
-          saved={isSaved}
-          onToggle={() =>
-            isSaved
-              ? removeSchool(name)
-              : addSchool({ school_name: name, address: addr, mainlevel_code: level })
-          }
-        />
+            saved={isSaved}
+            onToggle={() =>
+              isSaved
+                ? removeSchool(name)
+                : addSchool({ school_name: name, address: addr, mainlevel_code: level })
+            }
+          />
         </div>
       </div>
 
@@ -81,6 +121,31 @@ export const SchoolDetails: React.FC<{
           {zone && <Badge>{zone}</Badge>}
         </div>
       </div>
+
+      {/* Location Map (OneMap Advanced Minimap) */}
+      {hasMap && (
+        <div className="mt-6">
+          <h3 className="font-semibold text-lg mb-2">Location Map</h3>
+          <div className="rounded-xl overflow-hidden border">
+            <iframe
+              title="School location"
+              src={buildOneMapMiniMapURL({
+                postal,
+                lat: school.latitude,
+                lon: school.longitude,
+              })}
+              width="100%"
+              height="420"
+              style={{ border: 0 }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Source: OneMap (Singapore Land Authority)
+          </p>
+        </div>
+      )}
 
       {/* Contact Info */}
       {(school.telephone_no || school.email_address || school.url_address) && (
@@ -117,6 +182,40 @@ export const SchoolDetails: React.FC<{
           )}
         </div>
       )}
+
+      {/* Cut-off Points Section */}
+      {school.cutoff_points && (
+        <div className="mt-6">
+          <h3 className="font-semibold text-lg mb-2">Cut-off Points (2024)</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-gray-700">
+            <p>
+              <strong>PG3 (Express):</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 3 (EXPRESS)"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG3 Affiliated:</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 3 AFFILIATED"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG2 (Normal Acad):</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 2 (NORMAL ACAD)"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG2 Affiliated:</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 2 AFFILIATED"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG1 (Normal Tech):</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 1 (NORMAL TECH)"] ?? "N/A"}
+            </p>
+            <p>
+              <strong>PG1 Affiliated:</strong>{" "}
+              {school.cutoff_points["POSTING GROUP 1 AFFILIATED"] ?? "N/A"}
+            </p>
+          </div>
+        </div>
+      )}
+
 
       {/* Subjects + CCAs side by side */}
       {(school.subjects?.length || school.ccas?.length) && (

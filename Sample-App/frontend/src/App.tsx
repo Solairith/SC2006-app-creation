@@ -290,7 +290,7 @@ useEffect(() => {
             />
           )}
 
-          {!user && currentView !== "explore" && (
+          {!user && !["explore", "schoolDetails"].includes(currentView) && (
             <Card className="rounded-xl border-0 bg-gray-100 p-8 text-center">
               <div className="space-y-4">
                 <h3 className="text-lg font-semibold">Sign In Required</h3>
