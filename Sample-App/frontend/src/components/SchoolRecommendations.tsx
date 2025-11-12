@@ -1,28 +1,41 @@
+// src/components/SchoolRecommendations.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { getRecommendations, type School } from "../lib/api";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-
 import { HeartToggle } from "./HeartToggle";
 import { useSavedSchools } from "./context/SavedSchoolsContext";
+import { useCutoffDetails } from "./hooks/useCutoffDetails";
 
 type RecItem = School & {
   score: number;
   score_percent: number;
-  reasons?: any;
-  distance_km?: number;
+  reasons?: {
+    cca_matches?: string[];
+    subject_matches?: string[];
+  };
+  distance_km?: number | null;
   postal_code?: string;
+  zone_code?: string;
+  mainlevel_code?: string;
 };
 
-export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => void }> = ({ onViewDetails }) => {
+export const SchoolRecommendations: React.FC<{
+  onViewDetails: (name: string) => void;
+  user?: any;                // optional, if you want to block heart when not logged in
+  onRequireAuth?: () => void;
+}> = ({ onViewDetails, user, onRequireAuth }) => {
   const [items, setItems] = useState<RecItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [homePostal, setHomePostal] = useState<string | null>(null);
-  const { addSchool, savedSchools, removeSchool } = useSavedSchools();
 
-  const savedNames = useMemo(() => new Set(savedSchools.map(s => s.school_name)), [savedSchools]);
+  const { addSchool, savedSchools, removeSchool } = useSavedSchools();
+  const savedNames = useMemo(
+    () => new Set(savedSchools.map((s) => s.school_name)),
+    [savedSchools]
+  );
 
   const PAGE_SIZE = 20;
   const [visible, setVisible] = useState(PAGE_SIZE);
@@ -33,11 +46,13 @@ export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => 
       setLoading(true);
       setError(null);
       try {
-        const r = await getRecommendations();
-        if (r.error) {
+        const r: any = await getRecommendations();
+        if (r?.error) {
           setError(r.error);
         } else {
           setItems(r.items || []);
+          // if your backend returns this, show it; otherwise it's fine to stay null
+          setHomePostal(r.home_postal_used || r.home_postal || null);
         }
       } catch (e: any) {
         setError(e.message || String(e));
@@ -46,6 +61,14 @@ export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => 
       }
     })();
   }, []);
+
+  // 🔹 build cut-off lines lazily from school details
+  const cutoffCache = useCutoffDetails(
+    (items || []).map((s) => ({
+      school_name: s.school_name,
+      mainlevel_code: s.mainlevel_code,
+    }))
+  );
 
   const filtered = useMemo(
     () => (items || []).filter((it) => (it?.score_percent ?? 0) >= minScore),
@@ -92,6 +115,8 @@ export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => 
       <div className="grid md:grid-cols-1 gap-3">
         {shown.map((s) => {
           const isSaved = savedNames.has(s.school_name);
+          const cutoffLine = cutoffCache[s.school_name]?.cutoffLine;
+
           return (
             <div
               key={s.school_name}
@@ -102,15 +127,20 @@ export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => 
               <div className="absolute top-2 right-2 z-10" onClick={(e) => e.stopPropagation()}>
                 <HeartToggle
                   saved={isSaved}
-                  onToggle={() =>
+                  onToggle={() => {
+                    if (!user && onRequireAuth) {
+                      onRequireAuth();
+                      return;
+                    }
                     isSaved
                       ? removeSchool(s.school_name)
                       : addSchool({
                           school_name: s.school_name,
                           address: s.address,
                           mainlevel_code: s.mainlevel_code,
-                        })
-                  }
+                          zone_code: s.zone_code,
+                        });
+                  }}
                 />
               </div>
 
@@ -118,14 +148,20 @@ export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => 
                 <div className="flex-1">
                   <div className="text-lg font-medium flex items-center gap-2">
                     {s.school_name}
-                    {s.mainlevel_code && <Badge>{s.mainlevel_code}</Badge>}
+                    {s.mainlevel_code && <Badge variant="secondary">{s.mainlevel_code}</Badge>}
+                    {s.zone_code && <Badge variant="outline">{s.zone_code}</Badge>}
                   </div>
-                  <div className="text-sm text-muted">{s.address}</div>
+
+                  {s.address && (
+                    <div className="text-sm text-muted-foreground">{s.address}</div>
+                  )}
 
                   {/* Score + distance */}
                   <div className="text-sm mt-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-primary">{s.score_percent}%</span>
+                      <span className="font-semibold text-primary">
+                        {Math.round(s.score_percent)}%
+                      </span>
                       <span>match</span>
                       {s.distance_km !== undefined && s.distance_km !== null ? (
                         <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
@@ -140,26 +176,32 @@ export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => 
                   </div>
 
                   {/* Match reasons */}
-                  {s.reasons && (
+                  {(s.reasons?.cca_matches?.length || s.reasons?.subject_matches?.length) && (
                     <div className="text-xs text-muted-foreground mt-2 space-y-1">
-                      {s.reasons.cca_matches?.length > 0 && (
+                      {s.reasons.cca_matches?.length ? (
                         <div className="flex items-center gap-1">
                           <span className="font-medium">CCAs:</span>
                           <span>{s.reasons.cca_matches.join(", ")}</span>
                         </div>
-                      )}
-                      {s.reasons.subject_matches?.length > 0 && (
+                      ) : null}
+                      {s.reasons.subject_matches?.length ? (
                         <div className="flex items-center gap-1">
                           <span className="font-medium">Subjects:</span>
                           <span>{s.reasons.subject_matches.join(", ")}</span>
                         </div>
-                      )}
-                      
+                      ) : null}
+                    </div>
+                  )}
+
+                  {/* Cut-offs (from details) */}
+                  {cutoffLine && s.mainlevel_code !== "PRIMARY" && (
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      Cut-offs: {cutoffLine}
                     </div>
                   )}
                 </div>
 
-                {/* right-side action area placeholder, if you need later */}
+                {/* right-side placeholder */}
                 <div className="ml-2" onClick={(e) => e.stopPropagation()} />
               </div>
             </div>
@@ -171,7 +213,9 @@ export const SchoolRecommendations: React.FC<{ onViewDetails: (name: string) => 
       <div className="text-sm text-muted-foreground">
         Showing {shown.length} of {filtered.length} recommended schools
         {filtered.length === 0 && items.length > 0 && (
-          <span className="text-orange-600 ml-2">(no items ≥ {minScore}% match)</span>
+          <span className="text-orange-600 ml-2">
+            (no items ≥ {minScore}% match)
+          </span>
         )}
       </div>
 

@@ -5,6 +5,8 @@ export interface SavedSchool {
   school_name: string;
   address?: string;
   mainlevel_code?: string;
+  zone_code?: string;            
+  cutoff_primary?: string | null; 
 }
 
 interface SavedSchoolsContextType {
@@ -19,12 +21,10 @@ const SavedSchoolsContext = createContext<SavedSchoolsContextType | undefined>(
 
 export const SavedSchoolsProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [savedSchools, setSavedSchools] = useState<SavedSchool[]>(() => {
-    // ✅ load from localStorage on page load
     const stored = localStorage.getItem("savedSchools");
     return stored ? JSON.parse(stored) : [];
   });
 
-  // ✅ automatically persist to localStorage
   useEffect(() => {
     localStorage.setItem("savedSchools", JSON.stringify(savedSchools));
   }, [savedSchools]);

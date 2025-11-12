@@ -12,8 +12,9 @@ export const UserProfile: React.FC = () => {
   const [homeAddress, setHomeAddress] = useState("");
   const [saved, setSaved] = useState(false);
   const [opts, setOpts] = useState<{levels:string[], subjects:string[], ccas:string[]}>({levels:[], subjects:[], ccas:[]});
-  const [error, setError] = useState<string | null>(null);
-
+  const [error, setError] = useState<string | null>(null); 
+  const [saving, setSaving] = useState(false);
+  
   useEffect(() => {
     (async () => {
       try {
@@ -39,6 +40,15 @@ export const UserProfile: React.FC = () => {
 const onSave = async () => {
   setSaved(false);
   setError(null);
+
+  if(!postalValid){
+    setError("Please enter a valid 6-digit Singapore postal code.");
+    return;
+  }
+  if(!maxDistanceValid){
+    setError("Max Distance must be a number (km).");
+    return;
+  }
   try {
     const preferencesData = {
       level: level || undefined,
@@ -60,8 +70,14 @@ const onSave = async () => {
   } catch (e: any) {
     console.error('Failed to save preferences:', e);
     setError(e.message || "Failed to save preferences. Please check console for details.");
+  }finally{
+    setSaving(false);
   }
 };
+
+  // Home Address has to be postal code
+  const postalValid = /^\d{6}$/.test(homeAddress);
+  const maxDistanceValid = !maxDistance || !Number.isNaN(Number(maxDistance))
 
   return (
     <Card className="p-4">
@@ -69,17 +85,24 @@ const onSave = async () => {
       <div className="grid md:grid-cols-2 gap-3">
         {/* ADD HOME ADDRESS FIELD */}
         <div className="md:col-span-2">
-          <div className="text-sm mb-1">Home Address</div>
-          <input 
-            className="border rounded px-2 py-2 w-full" 
-            placeholder="Enter your home address for distance calculation"
-            value={homeAddress} 
-            onChange={(e) => setHomeAddress(e.target.value)} 
+          <div className="text-sm mb-1">Postal Code</div>
+          <input
+            className="border rounded px-2 py-2 w-full"
+            placeholder="6-digit postal code (e.g., 238801)"
+            value={homeAddress}
+            onChange={(e) => {
+              const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+              setHomeAddress(v);
+            }}
+            inputMode="numeric"      // mobile number keypad
+            pattern="\d{6}"          
+            maxLength={6}
           />
-          <p className="text-xs text-muted-foreground mt-1">
-            Your address will be used to calculate distance to schools
-          </p>
+          {homeAddress && !postalValid && (
+            <p className="text-xs text-red-600 mt-1">Enter a valid 6-digit postal code.</p>
+          )}
         </div>
+
         
         <div>
           <div className="text-sm mb-1">Level</div>
@@ -103,7 +126,7 @@ const onSave = async () => {
         </div>
       </div>
       <div className="mt-4 flex items-center gap-2">
-        <Button onClick={onSave}>Save</Button>
+        <Button onClick={onSave} disabled ={saving || !postalValid ||!maxDistanceValid}>Save</Button>
         {saved && <span className="text-sm text-green-700">Saved!</span>}
         {error && <span className="text-sm text-red-700">Error: {error}</span>}
       </div>

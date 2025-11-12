@@ -9,12 +9,12 @@ interface HeaderProps {
   onLogout: () => void
 }
 
-export const Header: React.FC<HeaderProps> = ({ 
-  currentView, 
-  onTabChange, 
-  user, 
-  onLoginClick, 
-  onLogout 
+export const Header: React.FC<HeaderProps> = ({
+  currentView,
+  onTabChange,
+  user,
+  onLoginClick,
+  onLogout
 }) => {
   const tabs = [
     { id: "explore", label: "Explore", icon: "🔍" },
@@ -30,41 +30,44 @@ export const Header: React.FC<HeaderProps> = ({
           className="flex items-center space-x-3 cursor-pointer"
           onClick={() => onTabChange("explore")}
         >
-          <div className="bg-primary rounded-lg p-2">
-            {/* Replace with your actual logo component */}
-            <div className="h-5 w-5 text-primary-foreground">🏫</div>
+          <div className="bg-primary rounded-xl p-2.5">
+            {/* logo placeholder */}
+            <div className="h-6 w-6 text-primary-foreground">🏫</div>
           </div>
-          <h1 className="text-lg font-bold text-primary">SchoolFit</h1>
+
+          <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-primary">
+            SchoolFit
+          </h1>
         </div>
 
-        {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center space-x-6">
+        <div className="hidden md:flex items-center space-x-3 lg:space-x-4">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition ${
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition ${
                 currentView === tab.id
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
+              <span className="text-xl">{tab.icon}</span>
+              <span className="text-base lg:text-lg font-medium">{tab.label}</span>
             </button>
           ))}
         </div>
 
-        <div className="flex items-center space-x-2">
+        {/* Auth */}
+        <div className="flex items-center space-x-3">
           {user ? (
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                {/* Replace with your User icon */}
-                <div className="h-4 w-4 text-primary">👤</div>
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <div className="h-5 w-5 text-primary">👤</div>
               </div>
-              <button 
+              {/* was text-sm / h-9 → make larger */}
+              <button
                 onClick={onLogout}
-                className="border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 rounded-md text-sm"
+                className="border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 rounded-md text-base"
               >
                 Logout
               </button>
@@ -72,7 +75,7 @@ export const Header: React.FC<HeaderProps> = ({
           ) : (
             <button
               onClick={onLoginClick}
-              className="bg-primary text-primary-foreground hover:bg-primary/90 h-9 px-4 rounded-md text-sm"
+              className="bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-5 rounded-md text-base font-medium"
             >
               Sign In
             </button>
@@ -93,8 +96,9 @@ export const Header: React.FC<HeaderProps> = ({
                   : "text-muted-foreground"
               }`}
             >
-              <span className="text-lg">{tab.icon}</span>
-              <span className="text-xs mt-1">{tab.label}</span>
+              {/* bigger icon + label on mobile */}
+              <span className="text-2xl">{tab.icon}</span>
+              <span className="text-sm mt-1">{tab.label}</span>
             </button>
           ))}
         </div>

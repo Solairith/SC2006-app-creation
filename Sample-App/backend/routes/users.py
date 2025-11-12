@@ -4,6 +4,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import os
+import re
+
+PWD_REGEX = re.compile(
+    r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\w\s])(?!.*\s).{12,72}$"
+)
 
 from utils.db import get_db
 from models.user_model import (
@@ -119,6 +124,13 @@ def signup():
     if not (name and email and password):
         return {"error": "NAME_EMAIL_PASSWORD_REQUIRED"}, 400
     
+    long_passphrase = len(password) >= 16 and (" " not in password)
+    if not (long_passphrase or PWD_REGEX.match(password)):
+        return {
+            "error": "WEAK_PASSWORD",
+            "message": "Password must be 12+ chars with upper, lower, number, symbol (no spaces) or a 16+ char passphrase."
+        }, 400
+        
     # Check if email already exists
     u = get_user_by_email(email)
     if u:
@@ -129,7 +141,6 @@ def signup():
     session["uid"] = u.id
     return {"ok": True, "user": {"id": u.id, "name": u.name, "email": u.email}}
 
-
 @user_bp.post("/auth/login")
 def login():
     """Login with email/password"""
@@ -139,14 +150,16 @@ def login():
     
     if not (email and password):
         return {"error": "EMAIL_PASSWORD_REQUIRED"}, 400
+    row = get_user_by_email(email)
+    if not row:
+        return {"error":"INVALID_EMAIL","message": "No account found with that email, Create one"}, 404
 
     u = verify_password(email, password)
     if not u:
-        return {"error": "INVALID_CREDENTIALS"}, 401
+        return {"error": "INVALID_PASSWORD", "message":"Incorrect password"}, 401
 
     session["uid"] = u.id
     return {"ok": True, "user": {"id": u.id, "name": u.name, "email": u.email}}
-
 
 @user_bp.post("/logout")
 def logout():
@@ -154,6 +167,13 @@ def logout():
     session.clear()
     return {"ok": True}
 
+@user_bp.get("/auth/email-exists")
+def email_exists():
+    email = (request.args.get("email") or "").strip().lower()
+    if not email:
+        return {"error": "EMAIL_REQUIRED"}, 400
+    row = get_user_by_email(email) 
+    return {"ok": True, "exists": bool(row)}
 
 @user_bp.get("/me")
 def me():
@@ -287,3 +307,32 @@ def delete_subject():
     db = get_db()
     db.execute("DELETE FROM user_subjects WHERE user_id=? AND subject_name=?", (u.id, subject))
     db.commit()
+
+# ==========================================
+# RESET PASSWORD SIMPLE
+# ==========================================
+
+@user_bp.post("/auth/password/reset-lite")
+def password_reset_lite():
+    """
+    DEV-ONLY: Reset password by matching email + name. No email sending, no token.
+    Not secure; for demo/class use only.
+    """
+    data = request.get_json(force=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    name  = (data.get("name") or "").strip()
+    newpw = data.get("password") or ""
+
+    if not (email and name and newpw):
+        return {"error": "FIELDS_REQUIRED", "message": "Email, name and new password are required."}, 400
+
+    db = get_db()
+    row = db.execute("SELECT id, name FROM users WHERE email=?", (email,)).fetchone()
+    if not row:
+        return {"error": "INVALID_EMAIL", "message": "No account with that email."}, 404
+    if row["name"].strip() != name:
+        return {"error": "NAME_MISMATCH", "message": "Name does not match the records."}, 401
+
+    db.execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(newpw), row["id"]))
+    db.commit()
+    return {"ok": True}

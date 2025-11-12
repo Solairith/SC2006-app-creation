@@ -12,24 +12,20 @@ interface DetailedSchool extends School {
   telephone_no?: string;
   email_address?: string;
   url_address?: string;
-  postal_code?: string;     // ✅ ensure we can read postal
-  latitude?: number;        // optional: if backend supplies coords
-  longitude?: number;       // optional: if backend supplies coords
+  postal_code?: string;
+  latitude?: number;
+  longitude?: number;
   cutoff_points?: {
-  "POSTING GROUP 3 (EXPRESS)"?: string;
-  "POSTING GROUP 3 AFFILIATED"?: string;
-  "POSTING GROUP 2 (NORMAL ACAD)"?: string;
-  "POSTING GROUP 2 AFFILIATED"?: string;
-  "POSTING GROUP 1 (NORMAL TECH)"?: string;
-  "POSTING GROUP 1 AFFILIATED"?: string;
-};
-
+    "POSTING GROUP 3 (EXPRESS)"?: string;
+    "POSTING GROUP 3 AFFILIATED"?: string;
+    "POSTING GROUP 2 (NORMAL ACAD)"?: string;
+    "POSTING GROUP 2 AFFILIATED"?: string;
+    "POSTING GROUP 1 (NORMAL TECH)"?: string;
+    "POSTING GROUP 1 AFFILIATED"?: string;
+  } | null;
 }
 
-/** Build OneMap Advanced Mini-Map URL.
- *  Uses lat/lon when available; falls back to postal code.
- *  No token required.
- */
+/** Build OneMap Advanced Mini-Map URL (postal or lat/lon). */
 function buildOneMapMiniMapURL(opts: { postal?: string; lat?: number; lon?: number }) {
   const base = "https://www.onemap.gov.sg/amm/amm.html";
   const params = new URLSearchParams({
@@ -41,7 +37,6 @@ function buildOneMapMiniMapURL(opts: { postal?: string; lat?: number; lon?: numb
   if (opts.lat != null && opts.lon != null) {
     params.set("marker", `latlng:${opts.lat},${opts.lon}!colour:red`);
   } else if (opts.postal) {
-    // sanitize to digits only (SG postals are 6 digits)
     const p = String(opts.postal).trim();
     const six = p.replace(/\D/g, "").slice(0, 6);
     params.set("marker", `postalcode:${six}!colour:red`);
@@ -50,29 +45,68 @@ function buildOneMapMiniMapURL(opts: { postal?: string; lat?: number; lon?: numb
   return `${base}?${params.toString()}`;
 }
 
+// ---------- Cutoff helpers ----------
+const isNA = (v?: string | null) => {
+  if (!v) return true;
+  const s = String(v).trim().toUpperCase();
+  return s === "N/A" || s === "NA" || s === "-" || s === "";
+};
+
+const cutoffItems = [
+  { key: "POSTING GROUP 3 (EXPRESS)",     label: "PG3 (Express)" },
+  { key: "POSTING GROUP 3 AFFILIATED",    label: "PG3 Affiliated" },
+  { key: "POSTING GROUP 2 (NORMAL ACAD)", label: "PG2 (Normal Acad)" },
+  { key: "POSTING GROUP 2 AFFILIATED",    label: "PG2 Affiliated" },
+  { key: "POSTING GROUP 1 (NORMAL TECH)", label: "PG1 (Normal Tech)" },
+  { key: "POSTING GROUP 1 AFFILIATED",    label: "PG1 Affiliated" },
+] as const;
+
+/** Extract a numeric value from a cutoff string like "22" or "22-24". */
+function parseFirstNumber(s?: string | null): number | null {
+  if (!s) return null;
+  const m = String(s).match(/\d+/);
+  return m ? Number(m[0]) : null;
+}
+
+/** Summarize a full cutoff map to a single representative number (min of all non-NA). */
+function summarizeCutoffPrimary(cp?: DetailedSchool["cutoff_points"] | null): string | null {
+  if (!cp) return null;
+  const nums: number[] = [];
+  for (const k of Object.keys(cp) as Array<keyof NonNullable<typeof cp>>) {
+    const v = cp[k];
+    if (!isNA(v)) {
+      const n = parseFirstNumber(v);
+      if (typeof n === "number" && !Number.isNaN(n)) nums.push(n);
+    }
+  }
+  if (!nums.length) return null;
+  return String(Math.min(...nums));
+}
+
 export const SchoolDetails: React.FC<{
   schoolName: string;
   onBack: () => void;
-}> = ({ schoolName, onBack }) => {
+  user?: any;
+  onRequireAuth?: () => void;
+}> = ({ schoolName, onBack, user, onRequireAuth }) => {
   const [school, setSchool] = useState<DetailedSchool | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { addSchool, savedSchools, removeSchool } = useSavedSchools();
 
   useEffect(() => {
-    async function load() {
+    (async () => {
       try {
         setLoading(true);
         setError(null);
         const data = await getSchoolDetails(schoolName);
         setSchool(data);
-      } catch (e: any) {
+      } catch {
         setError("Failed to load school details");
       } finally {
         setLoading(false);
       }
-    }
-    load();
+    })();
   }, [schoolName]);
 
   if (loading) return <Card className="p-6">Loading…</Card>;
@@ -91,6 +125,22 @@ export const SchoolDetails: React.FC<{
     (school.latitude != null && school.longitude != null) || postal
   );
 
+  // Build visible cutoff rows
+  const cutoffRows =
+    school.cutoff_points
+      ? cutoffItems
+          .map(({ key, label }) => ({
+            label,
+            value: school.cutoff_points![key as keyof NonNullable<DetailedSchool["cutoff_points"]>],
+          }))
+          .filter(({ value }) => !isNA(value))
+      : [];
+
+  const showCutoffs = level !== "PRIMARY" && cutoffRows.length > 0;
+
+  // Single-line summary for saving (optional but useful)
+  const cutoffPrimary = summarizeCutoffPrimary(school.cutoff_points);
+
   return (
     <Card className="p-6 space-y-6">
       {/* Header */}
@@ -104,11 +154,24 @@ export const SchoolDetails: React.FC<{
           </Button>
           <HeartToggle
             saved={isSaved}
-            onToggle={() =>
-              isSaved
-                ? removeSchool(name)
-                : addSchool({ school_name: name, address: addr, mainlevel_code: level })
-            }
+            onToggle={(e) => {
+              e?.stopPropagation?.();
+              if (!user) {
+                onRequireAuth?.();
+                return;
+              }
+              if (isSaved) {
+                removeSchool(name);
+              } else {
+                addSchool({
+                  school_name: name,
+                  address: addr,
+                  mainlevel_code: level,
+                  zone_code: zone,
+                  cutoff_primary: cutoffPrimary ?? null,
+                });
+              }
+            }}
           />
         </div>
       </div>
@@ -122,7 +185,7 @@ export const SchoolDetails: React.FC<{
         </div>
       </div>
 
-      {/* Location Map (OneMap Advanced Minimap) */}
+      {/* Location Map */}
       {hasMap && (
         <div className="mt-6">
           <h3 className="font-semibold text-lg mb-2">Location Map</h3>
@@ -183,44 +246,23 @@ export const SchoolDetails: React.FC<{
         </div>
       )}
 
-      {/* Cut-off Points Section */}
-      {school.cutoff_points && (
+      {/* Cut-off Points (hide N/A; hide entirely for PRIMARY) */}
+      {showCutoffs && (
         <div className="mt-6">
           <h3 className="font-semibold text-lg mb-2">Cut-off Points (2024)</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 text-gray-700">
-            <p>
-              <strong>PG3 (Express):</strong>{" "}
-              {school.cutoff_points["POSTING GROUP 3 (EXPRESS)"] ?? "N/A"}
-            </p>
-            <p>
-              <strong>PG3 Affiliated:</strong>{" "}
-              {school.cutoff_points["POSTING GROUP 3 AFFILIATED"] ?? "N/A"}
-            </p>
-            <p>
-              <strong>PG2 (Normal Acad):</strong>{" "}
-              {school.cutoff_points["POSTING GROUP 2 (NORMAL ACAD)"] ?? "N/A"}
-            </p>
-            <p>
-              <strong>PG2 Affiliated:</strong>{" "}
-              {school.cutoff_points["POSTING GROUP 2 AFFILIATED"] ?? "N/A"}
-            </p>
-            <p>
-              <strong>PG1 (Normal Tech):</strong>{" "}
-              {school.cutoff_points["POSTING GROUP 1 (NORMAL TECH)"] ?? "N/A"}
-            </p>
-            <p>
-              <strong>PG1 Affiliated:</strong>{" "}
-              {school.cutoff_points["POSTING GROUP 1 AFFILIATED"] ?? "N/A"}
-            </p>
+            {cutoffRows.map(({ label, value }) => (
+              <p key={label}>
+                <strong>{label}:</strong> {value}
+              </p>
+            ))}
           </div>
         </div>
       )}
 
-
-      {/* Subjects + CCAs side by side */}
+      {/* Subjects + CCAs */}
       {(school.subjects?.length || school.ccas?.length) && (
         <div className="flex flex-col md:flex-row gap-6 mt-6">
-          {/* Subjects */}
           {school.subjects && school.subjects.length > 0 && (
             <div className="flex-1">
               <h3 className="font-semibold text-lg mb-2">Subjects Offered</h3>
@@ -233,8 +275,6 @@ export const SchoolDetails: React.FC<{
               </div>
             </div>
           )}
-
-          {/* CCAs */}
           {school.ccas && school.ccas.length > 0 && (
             <div className="flex-1">
               <h3 className="font-semibold text-lg mb-2">

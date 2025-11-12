@@ -243,13 +243,12 @@ useEffect(() => {
         <div className="p-4 space-y-4">
           {/* USE THE NEW TAB COMPONENTS */}
           {currentView === "explore" && (
-            <ExploreTab user={user} onViewDetails={handleViewSchoolDetails} />
+            <ExploreTab user={user} onViewDetails={handleViewSchoolDetails}  onRequireAuth={onRequireAuth} />
           )}
 
           {currentView === "saved" && user && (
             <SavedTab user={user} onViewDetails={handleViewSchoolDetails} />
           )}
-
       
           {currentView === "recommendations" && user && (
             userHasPreferences ? (
@@ -287,6 +286,8 @@ useEffect(() => {
             <SchoolDetails
               schoolName={selectedSchool}
               onBack={handleBackFromDetails}
+              user={user}
+              onRequireAuth={() => setShowAuth(true)}
             />
           )}
 

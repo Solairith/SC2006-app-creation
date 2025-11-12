@@ -1,10 +1,24 @@
-export const BACKEND_BASE = ""; // use Vite proxy to avoid CORS/cookie issues
+export const BACKEND_BASE = "";
 
-async function j(r: Response) {
-  let t: any = {};
-  try { t = await r.json(); } catch {}
-  if (!r.ok) throw new Error(t?.error || `HTTP ${r.status}`);
-  return t;
+// Better error handling function
+async function handleResponse(r: Response) {
+  let data: any = {};
+  try { 
+    data = await r.json(); 
+  } catch {
+    // If response isn't JSON, create a basic error structure
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    }
+    return data;
+  }
+  
+  if (!r.ok) {
+    const error = new Error(data?.error || `HTTP ${r.status}`);
+    (error as any).responseData = data; // Attach full response data
+    throw error;
+  }
+  return data;
 }
 
 // --- Auth (local) ---
@@ -15,7 +29,7 @@ export async function signup(name: string, email: string, password: string) {
     credentials: "include",
     body: JSON.stringify({ name, email, password }),
   });
-  return j(r);
+  return handleResponse(r);
 }
 
 export async function login(email: string, password: string) {
@@ -25,7 +39,7 @@ export async function login(email: string, password: string) {
     credentials: "include",
     body: JSON.stringify({ email, password }),
   });
-  return j(r);
+  return handleResponse(r);
 }
 
 export async function logout() {
@@ -33,7 +47,7 @@ export async function logout() {
     method: "POST",
     credentials: "include",
   });
-  return j(r);
+  return handleResponse(r);
 }
 
 // Google User Auth
@@ -44,12 +58,12 @@ export async function googleLogin(token: string) {
     credentials: "include",
     body: JSON.stringify({ token }),
   });
-  return j(r);
+  return handleResponse(r);
 }
 
 export async function getMe() {
   const r = await fetch(`${BACKEND_BASE}/api/me`, { credentials: "include" });
-  return j(r);
+  return handleResponse(r);
 }
 
 // --- Preferences ---
@@ -62,7 +76,7 @@ export type Preferences = {
 
 export async function getPreferences(): Promise<any> {
   const r = await fetch(`${BACKEND_BASE}/api/preferences`, { credentials: "include" });
-  return j(r);
+  return handleResponse(r);
 }
 
 
@@ -116,6 +130,8 @@ export type School = {
   zone_code?: string;
   type_code?: string;
   address?: string;
+  postal_code?:string;
+  cutoff_primary?:string |null;
 };
 
 export async function searchSchools(params: {
@@ -134,12 +150,12 @@ export async function searchSchools(params: {
   if (params.limit !== undefined) sp.set("limit", String(params.limit));
   if (params.offset !== undefined) sp.set("offset", String(params.offset));
   const r = await fetch(`${BACKEND_BASE}/api/schools?` + sp.toString(), { credentials: "include" });
-  return j(r);
+  return handleResponse(r);
 }
 
 export async function getSchoolDetails(name: string) {
   const r = await fetch(`${BACKEND_BASE}/api/schools/details?name=` + encodeURIComponent(name), { credentials: "include" });
-  const data = await j(r);
+  const data = await handleResponse(r);
   return data.item;
 }
 
@@ -222,3 +238,21 @@ export const getRecommendations = async (): Promise<{ items: any[], error?: stri
     };
   }
 };
+
+export async function emailExists(email: string): Promise<boolean> {
+  const r = await fetch(`${BACKEND_BASE}/api/auth/email-exists?email=` + encodeURIComponent(email), {
+    credentials: "include",
+  });
+  const data = await handleResponse(r);
+  return !!data.exists;
+}
+
+export async function requestPasswordResetLite(email: string, name: string, password: string) {
+  const r = await fetch(`/api/auth/password/reset-lite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, name, password }),
+  });
+  return handleResponse(r);
+}

@@ -19,6 +19,28 @@ ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXV
 # 🔁 in-memory cache for postal → (lat, lon)
 _POSTAL_CACHE: dict[str, dict] = {}   # { "200640": {"lat": 1.30..., "lon": 103.85..., "ts": 1690000000} }
 _POSTAL_TTL_SEC = 24 * 3600           # cache for a day
+# HELPERS
+def _is_na(v):
+    if not v: 
+        return True
+    s = str(v).strip().upper()
+    return s in {"N/A", "NA", "-", ""}
+
+def _summarize_cutoff(cutoff_points: dict | None) -> str | None:
+    """Pick one representative cutoff for cards."""
+    if not cutoff_points:
+        return None
+    order = [
+        "POSTING GROUP 3 (EXPRESS)",
+        "POSTING GROUP 3 AFFILIATED",
+        "POSTING GROUP 2 (NORMAL ACAD)",
+        "POSTING GROUP 1 (NORMAL TECH)",
+    ]
+    for k in order:
+        v = cutoff_points.get(k)
+        if not _is_na(v):
+            return str(v)
+    return None
 
 def _normalize_level(lv: str | None) -> str | None:
     if not lv: 
@@ -173,9 +195,21 @@ def search():
     filtered = [s for s in items if ok(s)]
     total = len(filtered)
     sliced = filtered[offset:offset+limit]
+    enriched = []
+    for s in sliced:
+        # if your base list already has cutoff_points, use it; else peek at details
+        cut = None
+        if isinstance(s.get("cutoff_points"), dict):
+            cut = _summarize_cutoff(s["cutoff_points"])
+        else:
+            d = get_school_details(s.get("school_name"))
+            cut = _summarize_cutoff((d or {}).get("cutoff_points"))
+
+        s2 = dict(s)
+        s2["cutoff_primary"] = cut
+        enriched.append(s2)
     
-    
-    return {"items": sliced, "total": total, "limit": limit, "offset": offset, "total_pages": (total+limit-1)//limit}
+    return {"items": enriched, "total": total, "limit": limit, "offset": offset, "total_pages": (total+limit-1)//limit}
 
 @school_bp.get("/details")
 def details():
@@ -229,7 +263,8 @@ def _score_school(school: dict, prefs: dict, weights: dict, user_lat=None, user_
         "level_match": bool(level_score == 1.0),
         "distance_km": round(distance_km, 3) if distance_km is not None else None,
         "distance_score": dist_score,
-        "weights": weights
+        "weights": weights,
+        "cutoff_primary": _summarize_cutoff(details.get("cutoff_points"))
     }
     return score, reasons
 
@@ -290,7 +325,8 @@ def recommend():
             "distance_km":    reasons.get("distance_km"),
             "score":          sc,
             "score_percent":  round(max(0.0, min(1.0, sc)) * 100),
-            "reasons":        reasons
+            "reasons":        reasons, 
+            "cutoff_primary": reasons.get("cutoff_primary"),
         })
 
     scored.sort(key=lambda x: (-x["score"], x["school_name"].lower()))

@@ -1,65 +1,74 @@
+// src/components/tabs/SavedTab.tsx
 import React from "react";
+import { Card } from "../ui/card";
+import { Badge } from "../ui/badge";
 import { useSavedSchools } from "../context/SavedSchoolsContext";
+import { HeartToggle } from "../HeartToggle";
+import { useCutoffDetails } from "../hooks/useCutoffDetails";
 
-interface SavedTabProps {
-  onViewDetails: (schoolName: string) => void;
-}
-
-export const SavedTab: React.FC<SavedTabProps> = ({ onViewDetails }) => {
+export const SavedTab: React.FC<{
+  user: any;
+  onViewDetails: (name: string) => void;
+  onRequireAuth: () => void;
+}> = ({ user, onViewDetails, onRequireAuth }) => {
   const { savedSchools, removeSchool } = useSavedSchools();
 
-  if (savedSchools.length === 0) {
+  const details = useCutoffDetails(
+    savedSchools.map((s) => ({
+      school_name: s.school_name,
+      mainlevel_code: (s as any).mainlevel_code,
+    }))
+  );
+
+  if (!savedSchools.length) {
     return (
-      <div className="text-center py-12 bg-card rounded-lg border">
-        <p className="text-muted-foreground text-lg">No saved schools yet</p>
-        <p className="text-muted-foreground mt-2">
-          Explore schools and save them to see them here
-        </p>
-      </div>
+      <Card className="p-8 text-center text-sm text-muted-foreground">
+        No saved schools yet.
+      </Card>
     );
   }
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">Your Saved Schools</h2>
-
-      <div className="grid gap-4">
-        {savedSchools.map((school, index) => (
-          <div
-            key={index}
-            className="bg-card border rounded-lg p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50"
+    <div className="grid gap-4">
+      {savedSchools.map((s, i) => {
+        const cut = details[s.school_name]?.cutoffLine;
+        return (
+          <Card
+            key={`${s.school_name}-${i}`}
+            className="p-4 hover:shadow-md transition cursor-pointer hover:border-primary/50 relative"
+            onClick={() => onViewDetails(s.school_name)}
           >
-            <div
-              onClick={() => onViewDetails(school.school_name)}
-              className="cursor-pointer"
-            >
-              <h3 className="font-semibold text-lg">{school.school_name}</h3>
-              {school.address && (
-                <p className="text-muted-foreground text-sm mt-1">
-                  {school.address}
-                </p>
-              )}
-              <div className="flex items-center justify-between mt-3">
-                <div className="flex gap-2">
-                  {school.mainlevel_code && (
-                    <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                      {school.mainlevel_code}
-                    </span>
-                  )}
-                </div>
-              </div>
+            <div className="absolute top-2 right-2">
+              <HeartToggle
+                saved={true}
+                onToggle={(e) => {
+                  e?.stopPropagation?.();
+                  removeSchool(s.school_name);
+                }}
+              />
             </div>
 
-            {/* ✅ Remove Button */}
-            <button
-              onClick={() => removeSchool(school.school_name)}
-              className="mt-3 text-sm text-red-600 hover:underline"
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-      </div>
+            <h3 className="font-semibold text-lg">{s.school_name}</h3>
+            {s.address && (
+              <p className="text-muted-foreground text-sm mt-1">{s.address}</p>
+            )}
+            <div className="flex flex-wrap gap-2 mt-3">
+              {(s as any).mainlevel_code && (
+                <Badge variant="secondary">{(s as any).mainlevel_code}</Badge>
+              )}
+              {(s as any).zone_code && (
+                <Badge variant="outline">{(s as any).zone_code}</Badge>
+              )}
+            </div>
+
+            {cut && (
+              <div className="mt-2 text-sm text-muted-foreground">
+                Cut-offs: {cut}
+              </div>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 };
