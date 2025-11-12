@@ -14,7 +14,7 @@ import os
 school_bp = Blueprint("schools", __name__, url_prefix="/api/schools")
 
 # 🔐 OneMap token (recommended: set env var ONEMAP_TOKEN)
-ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo5OTA2LCJmb3JldmVyIjpmYWxzZSwiaXNzIjoiT25lTWFwIiwiaWF0IjoxNzYyMjY2OTQ0LCJuYmYiOjE3NjIyNjY5NDQsImV4cCI6MTc2MjUyNjE0NCwianRpIjoiMjU5ZjEyZmQtNGQ1Ni00MGFjLWEwODctMDMyMmEyODIyZjRiIn0.Ifd6nGZdc09DeIqV9DkqnVfk9aUP09wMwrN3do6OTb-FYGHnvbY1T5zvSSySPF7Vu6OQQcTQWR6TepbkXD91wFQZeq_oqY0TlEq5c3N5KPH1Gp871L9g1RGIF_XK5IDcx3Vr4XARZR8R_4j0ycWIoGzARNVPxVmhJj7GCst_ywlZbBZYN12I5RRWIz40Y8WO06bZN8bcSx0onKmMTPTzrPISiUvBfkBOoP1RXuXSaBa6poosFTpRsJLdXegX1Rq4-fuwOhuNgqYbVkrCGnWY4z-iEN_CQSVeTM8_xaNwXneCJN3BJpNo6QMv-8HyBp4H9y_OKNdlJcY6C8EjfzCxHA")
+ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxMDA0NiwiZm9yZXZlciI6ZmFsc2UsImlzcyI6Ik9uZU1hcCIsImlhdCI6MTc2MjkyOTYwOCwibmJmIjoxNzYyOTI5NjA4LCJleHAiOjE3NjMxODg4MDgsImp0aSI6IjBiZGFmMzY3LTZkNTYtNDQyNC04OWMxLWMzMjI5OWY2YzI3NiJ9.gS0zEy0WpGoRgMohaorwmeHOhxjV7g3q3_LVubPjgi8fB6BbARl3iAQqiSydJasiwJ_qYDFmdynTjarXcWFd6hD4OZ9GB7Vz0i1sYoWwP2iqVR2zU0tfsnJoSeusmogr43Anc6tOWeAAhSzAQTuMGxk60EGsY-uR0NfmrSNLhpfFvJS8-g4bsISaHE1wxPM1zqOp3lmjUMfIXvC4UhnsFvBffoKHgyDW9bjL9i6K-vv-XPzlDl90wj9h8QDUV0QKUtqvq6HBd7RJGl3H2K1daoEieg8UpN3Jn7OVrUSg506Wp7DA3L3Lr_rwcxPuut5EZyCcAd00GUW8iq6qI0UTIA")
 
 # 🔁 in-memory cache for postal → (lat, lon)
 _POSTAL_CACHE: dict[str, dict] = {}   # { "200640": {"lat": 1.30..., "lon": 103.85..., "ts": 1690000000} }
