@@ -256,3 +256,13 @@ export async function requestPasswordResetLite(email: string, name: string, pass
   });
   return handleResponse(r);
 }
+
+export async function resetPassword(email: string, name: string, newPassword: string) {
+  const r = await fetch(`/api/auth/reset`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, name, password: newPassword }),
+  });
+  return handleResponse(r); // will throw with e.responseData on 4xx/5xx
+}
