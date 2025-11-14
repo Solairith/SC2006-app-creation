@@ -51,19 +51,8 @@ export async function logout() {
 }
 
 // Google User Auth
-export async function googleLogin(token: string) {
-  const r = await fetch(`${BACKEND_BASE}/api/auth/google`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ token }),
-  });
-  return handleResponse(r);
-}
-
-export async function getMe() {
-  const r = await fetch(`${BACKEND_BASE}/api/me`, { credentials: "include" });
-  return handleResponse(r);
+export function getGoogleLoginUrl(): string {
+  return `${BACKEND_BASE}/api/auth/login/google`;
 }
 
 // --- Preferences ---

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
-import { login, signup, emailExists, requestPasswordResetLite } from "../lib/api";
+import { login, signup, getGoogleLoginUrl, emailExists, requestPasswordResetLite } from "../lib/api";
 
 type Props = {
   onClose: () => void;
@@ -158,7 +158,7 @@ export const AuthModal: React.FC<Props> = ({ onClose, onAuthed }) => {
   }, [mode]);
 
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:5000/api/auth/login/google";
+    window.location.href = getGoogleLoginUrl();
   };
 
   const canSubmit = !loading;
