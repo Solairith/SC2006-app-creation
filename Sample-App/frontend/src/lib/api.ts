@@ -50,6 +50,13 @@ export async function logout() {
   return handleResponse(r);
 }
 
+export async function getMe() {
+  const r = await fetch(`${BACKEND_BASE}/api/me`, {
+    credentials: "include",
+  });
+  return handleResponse(r);
+}
+
 // Google User Auth
 export function getGoogleLoginUrl(): string {
   return `${BACKEND_BASE}/api/auth/login/google`;
